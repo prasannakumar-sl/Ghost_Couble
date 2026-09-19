@@ -18,7 +18,7 @@ const DEFAULT_CONFIG: CollisionConfig = {
 
 export class CollisionSystem {
   readonly config: CollisionConfig;
-  private reportedHit = false;
+  private readonly reportedObstaclePositions = new Map<Obstacle, number>();
 
   constructor(config: Partial<CollisionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -28,9 +28,9 @@ export class CollisionSystem {
     player: PlayerController,
     snapshot: PlayerSnapshot,
     obstacles: readonly Obstacle[],
-    onHit: () => void,
+    onHit: () => boolean,
   ) {
-    if (this.reportedHit || snapshot.state === PlayerState.HIT) return;
+    if (snapshot.state === PlayerState.HIT || snapshot.state === PlayerState.DEAD) return;
 
     const playerHalfWidth = this.config.playerWidth / 2;
     const playerHalfDepth = this.config.playerDepth / 2;
@@ -61,10 +61,14 @@ export class CollisionSystem {
         playerMinZ < obstacleMaxZ &&
         playerMaxZ > obstacleMinZ
       ) {
-        this.reportedHit = true;
-        if (player.hit()) onHit();
+        if (this.reportedObstaclePositions.get(obstacle) === obstacleWorldZ) return;
+        if (onHit()) this.reportedObstaclePositions.set(obstacle, obstacleWorldZ);
         return;
       }
     }
+  }
+
+  reset() {
+    this.reportedObstaclePositions.clear();
   }
 }

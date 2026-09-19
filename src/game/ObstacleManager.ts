@@ -76,6 +76,14 @@ export class ObstacleManager {
     return [{ type: ObstacleType.BLOCK, lane: LANES.CENTER, localZ }];
   }
 
+  reset() {
+    this.chunkManager.getActiveChunks().forEach((chunk) => chunk.obstacleRoot.clear());
+    this.pool.reset();
+    this.configuredPositions.clear();
+    this.chunkObstacles.clear();
+    this.patternIndex = 0;
+  }
+
   dispose() {
     this.pool.dispose();
     this.configuredPositions.clear();

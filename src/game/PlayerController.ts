@@ -45,15 +45,36 @@ export class PlayerController {
   }
 
   hit() {
-    if (!this.started || this.state === PlayerState.HIT) return false;
+    if (!this.started || this.state === PlayerState.HIT || this.state === PlayerState.DEAD) return false;
     this.state = PlayerState.HIT;
     this.velocityY = 0;
     return true;
   }
 
+  recoverHit() {
+    if (this.state === PlayerState.HIT) this.state = PlayerState.RUN;
+  }
+
+  die() {
+    this.state = PlayerState.DEAD;
+    this.velocityY = 0;
+  }
+
+  reset() {
+    this.position.x = 0;
+    this.position.y = 0;
+    this.position.z = 0;
+    this.currentLane = LANES.CENTER;
+    this.targetLane = LANES.CENTER;
+    this.velocityY = 0;
+    this.slideElapsed = 0;
+    this.state = PlayerState.RUN;
+    this.started = true;
+  }
+
   update(deltaTime: number) {
     const delta = Math.min(deltaTime, 0.05);
-    if (!this.started || this.state === PlayerState.HIT) return;
+    if (!this.started || this.state === PlayerState.HIT || this.state === PlayerState.DEAD) return;
 
     const targetX = this.targetLane * this.config.laneWidth;
     const laneBlend = 1 - Math.exp(-this.config.laneSmoothing * delta);

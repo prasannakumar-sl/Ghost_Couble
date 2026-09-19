@@ -10,6 +10,8 @@ import { InputCommand, SwipeInput } from './SwipeInput';
 import { ChunkManager } from './ChunkManager';
 import { CollisionSystem } from './CollisionSystem';
 import { ObstacleManager } from './ObstacleManager';
+import { CoinManager } from './collectibles/CoinManager';
+import { GameRuntime, GameRuntimeSnapshot, GameState } from './GameRuntime';
 
 function createPlayer() {
   const player = new THREE.Group();
@@ -53,12 +55,24 @@ function applyCommand(controller: PlayerController, command: InputCommand) {
   if (command === 'SLIDE') controller.slide();
 }
 
-export default function ThreeGameView() {
+interface ThreeGameViewProps {
+  restartToken: number;
+  onSnapshot: (snapshot: GameRuntimeSnapshot) => void;
+}
+
+export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameViewProps) {
   const playerController = useMemo(() => new PlayerController(), []);
   const swipeInput = useMemo(() => new SwipeInput(), []);
   const animationRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const contextCreatedRef = useRef(false);
+  const restartTokenRef = useRef(restartToken);
+  const onSnapshotRef = useRef(onSnapshot);
+
+  useEffect(() => {
+    restartTokenRef.current = restartToken;
+    onSnapshotRef.current = onSnapshot;
+  }, [onSnapshot, restartToken]);
 
   const panResponder = useMemo(
     () =>
@@ -99,7 +113,10 @@ export default function ThreeGameView() {
     const chunkManager = new ChunkManager(scene);
     const obstacleManager = new ObstacleManager(chunkManager);
     const collisionSystem = new CollisionSystem();
+    const runtime = new GameRuntime();
+    const coinManager = new CoinManager(chunkManager, runtime);
     obstacleManager.update();
+    coinManager.update(0, 0);
 
     const camera = new THREE.PerspectiveCamera(58, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 180);
     camera.position.set(0, 5.2, 8.5);
@@ -125,17 +142,59 @@ export default function ThreeGameView() {
     const cameraAnchor = new THREE.Vector3();
     const clock = new THREE.Clock();
     let elapsed = 0;
+    let hudElapsed = 0;
+    let handledRestartToken = restartTokenRef.current;
     playerController.start();
+    onSnapshotRef.current(runtime.getSnapshot());
+
+    const restart = () => {
+      runtime.reset();
+      playerController.reset();
+      chunkManager.reset();
+      obstacleManager.reset();
+      coinManager.reset();
+      collisionSystem.reset();
+      obstacleManager.update();
+      coinManager.update(0, elapsed);
+      hudElapsed = 0;
+      onSnapshotRef.current(runtime.getSnapshot());
+    };
 
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
       const delta = clock.getDelta();
       elapsed += delta;
-      playerController.update(delta);
-      chunkManager.update(playerController.position.z);
-      obstacleManager.update();
+      if (restartTokenRef.current !== handledRestartToken) {
+        handledRestartToken = restartTokenRef.current;
+        restart();
+      }
+
+      if (runtime.getSnapshot().gameState !== GameState.DEAD) {
+        runtime.update(delta, playerController.config.speed);
+        if (runtime.getSnapshot().gameState === GameState.RUNNING) playerController.recoverHit();
+        playerController.update(delta);
+        chunkManager.update(playerController.position.z);
+        obstacleManager.update();
+        coinManager.update(delta, elapsed);
+        coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+        const collisionSnapshot = playerController.getSnapshot();
+        collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, () => {
+          const damaged = runtime.takeDamage();
+          if (damaged) {
+            if (runtime.getSnapshot().gameState === GameState.DEAD) playerController.die();
+            else playerController.hit();
+          }
+          return damaged;
+        });
+      }
+
+      const runtimeSnapshot = runtime.getSnapshot();
+      hudElapsed += delta;
+      if (hudElapsed >= 0.12 || runtimeSnapshot.gameState === GameState.DEAD) {
+        hudElapsed = 0;
+        onSnapshotRef.current(runtimeSnapshot);
+      }
       const snapshot = playerController.getSnapshot();
-      collisionSystem.update(playerController, snapshot, obstacleManager.obstacles, () => {});
 
       cameraAnchor.set(playerController.position.x, playerController.position.y, playerController.position.z);
       player.position.copy(cameraAnchor);
@@ -151,6 +210,7 @@ export default function ThreeGameView() {
     animate();
     cleanupRef.current = () => {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+      coinManager.dispose();
       obstacleManager.dispose();
       chunkManager.dispose();
       renderer.dispose();

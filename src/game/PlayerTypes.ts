@@ -13,6 +13,7 @@ export enum PlayerState {
   FALL = 'FALL',
   SLIDE = 'SLIDE',
   HIT = 'HIT',
+  DEAD = 'DEAD',
 }
 
 export type AnimationState = PlayerState;
