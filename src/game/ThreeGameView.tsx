@@ -7,6 +7,7 @@ import { CameraController } from './CameraController';
 import { PlayerController } from './PlayerController';
 import { PlayerState } from './PlayerTypes';
 import { InputCommand, SwipeInput } from './SwipeInput';
+import { ChunkManager } from './ChunkManager';
 
 function createPlayer() {
   const player = new THREE.Group();
@@ -41,42 +42,6 @@ function createWorld(scene: THREE.Scene) {
   const moon = new THREE.DirectionalLight(0xb8d8ff, 2.2);
   moon.position.set(-8, 14, 8);
   scene.add(moon);
-
-  const road = new THREE.Mesh(
-    new THREE.PlaneGeometry(12, 190),
-    new THREE.MeshStandardMaterial({ color: 0x17172c, roughness: 0.94, metalness: 0.05 }),
-  );
-  road.rotation.x = -Math.PI / 2;
-  road.position.set(0, -0.03, -67);
-  scene.add(road);
-
-  const edge = new THREE.MeshStandardMaterial({ color: 0x42d8e8, emissive: 0x0c5868, emissiveIntensity: 0.5 });
-  for (const x of [-3.53, 3.53]) {
-    const line = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.025, 190), edge);
-    line.position.set(x, 0.01, -67);
-    scene.add(line);
-  }
-
-  const laneMarker = new THREE.MeshStandardMaterial({ color: 0x6755a8, emissive: 0x20184b, emissiveIntensity: 0.7 });
-  for (let z = 3; z > -150; z -= 8) {
-    for (const x of [-1.18, 1.18]) {
-      const marker = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.02, 3.3), laneMarker);
-      marker.position.set(x, 0.02, z);
-      scene.add(marker);
-    }
-  }
-
-  const postMaterial = new THREE.MeshStandardMaterial({ color: 0x25204a, emissive: 0x161235, emissiveIntensity: 0.5 });
-  for (let z = 0; z > -150; z -= 12) {
-    for (const x of [-5.5, 5.5]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 2.2, 8), postMaterial);
-      post.position.set(x, 1.1, z);
-      scene.add(post);
-      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), edge);
-      glow.position.set(x, 2.2, z);
-      scene.add(glow);
-    }
-  }
 }
 
 function applyCommand(controller: PlayerController, command: InputCommand) {
@@ -129,6 +94,7 @@ export default function ThreeGameView() {
   );
     const scene = new THREE.Scene();
     createWorld(scene);
+    const chunkManager = new ChunkManager(scene);
 
     const camera = new THREE.PerspectiveCamera(58, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 180);
     camera.position.set(0, 5.2, 8.5);
@@ -161,6 +127,7 @@ export default function ThreeGameView() {
       const delta = clock.getDelta();
       elapsed += delta;
       playerController.update(delta);
+      chunkManager.update(playerController.position.z);
       const snapshot = playerController.getSnapshot();
 
       cameraAnchor.set(playerController.position.x, playerController.position.y, playerController.position.z);
@@ -177,6 +144,7 @@ export default function ThreeGameView() {
     animate();
     cleanupRef.current = () => {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+      chunkManager.dispose();
       renderer.dispose();
       scene.traverse((object) => {
         const mesh = object as THREE.Mesh;
