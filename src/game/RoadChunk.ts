@@ -32,6 +32,7 @@ export class RoadChunk extends THREE.Group {
   private readonly ground: THREE.Mesh;
   private readonly laneGuides: THREE.Mesh[] = [];
   private readonly edgeLights: THREE.Mesh[] = [];
+  readonly obstacleRoot = new THREE.Group();
   private layout: RoadChunkLayout = {};
 
   constructor(config: Partial<RoadChunkConfig> = {}) {
@@ -87,6 +88,8 @@ export class RoadChunk extends THREE.Group {
       this.edgeLights.push(edge);
       this.add(edge);
     }
+
+    this.add(this.obstacleRoot);
   }
 
   configure(positionZ: number, layout: RoadChunkLayout = {}) {
@@ -95,9 +98,14 @@ export class RoadChunk extends THREE.Group {
     this.visible = true;
   }
 
+  setLayout(layout: RoadChunkLayout) {
+    this.layout = layout;
+  }
+
   reset() {
     this.visible = false;
     this.layout = {};
+    this.obstacleRoot.clear();
   }
 
   get startZ() {

@@ -44,9 +44,16 @@ export class PlayerController {
     this.state = PlayerState.SLIDE;
   }
 
+  hit() {
+    if (!this.started || this.state === PlayerState.HIT) return false;
+    this.state = PlayerState.HIT;
+    this.velocityY = 0;
+    return true;
+  }
+
   update(deltaTime: number) {
     const delta = Math.min(deltaTime, 0.05);
-    if (!this.started) return;
+    if (!this.started || this.state === PlayerState.HIT) return;
 
     const targetX = this.targetLane * this.config.laneWidth;
     const laneBlend = 1 - Math.exp(-this.config.laneSmoothing * delta);

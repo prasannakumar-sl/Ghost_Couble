@@ -8,6 +8,8 @@ import { PlayerController } from './PlayerController';
 import { PlayerState } from './PlayerTypes';
 import { InputCommand, SwipeInput } from './SwipeInput';
 import { ChunkManager } from './ChunkManager';
+import { CollisionSystem } from './CollisionSystem';
+import { ObstacleManager } from './ObstacleManager';
 
 function createPlayer() {
   const player = new THREE.Group();
@@ -95,6 +97,9 @@ export default function ThreeGameView() {
     const scene = new THREE.Scene();
     createWorld(scene);
     const chunkManager = new ChunkManager(scene);
+    const obstacleManager = new ObstacleManager(chunkManager);
+    const collisionSystem = new CollisionSystem();
+    obstacleManager.update();
 
     const camera = new THREE.PerspectiveCamera(58, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 180);
     camera.position.set(0, 5.2, 8.5);
@@ -128,7 +133,9 @@ export default function ThreeGameView() {
       elapsed += delta;
       playerController.update(delta);
       chunkManager.update(playerController.position.z);
+      obstacleManager.update();
       const snapshot = playerController.getSnapshot();
+      collisionSystem.update(playerController, snapshot, obstacleManager.obstacles, () => {});
 
       cameraAnchor.set(playerController.position.x, playerController.position.y, playerController.position.z);
       player.position.copy(cameraAnchor);
@@ -144,6 +151,7 @@ export default function ThreeGameView() {
     animate();
     cleanupRef.current = () => {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+      obstacleManager.dispose();
       chunkManager.dispose();
       renderer.dispose();
       scene.traverse((object) => {

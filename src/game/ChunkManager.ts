@@ -37,6 +37,10 @@ export class ChunkManager {
     });
   }
 
+  getActiveChunks() {
+    return this.activeChunks;
+  }
+
   update(playerZ: number) {
     while (this.activeChunks[0] && playerZ < this.activeChunks[0].startZ - this.config.recycleDistance) {
       const recycled = this.activeChunks.shift();
