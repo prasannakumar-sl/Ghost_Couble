@@ -6,6 +6,11 @@ export enum GameState {
   DEAD = 'DEAD',
 }
 
+export enum GameOverReason {
+  OBSTACLE = 'OBSTACLE',
+  GHOST_CAUGHT = 'GHOST_CAUGHT',
+}
+
 export interface GameRuntimeSnapshot {
   score: number;
   distance: number;
@@ -13,6 +18,7 @@ export interface GameRuntimeSnapshot {
   hearts: number;
   maxHearts: number;
   gameState: GameState;
+  gameOverReason: GameOverReason | null;
 }
 
 export class GameRuntime {
@@ -22,6 +28,7 @@ export class GameRuntime {
   private coins = 0;
   private hearts: number;
   private gameState = GameState.RUNNING;
+  private gameOverReason: GameOverReason | null = null;
   private damageCooldownRemaining = 0;
   private hitRemaining = 0;
 
@@ -55,11 +62,12 @@ export class GameRuntime {
 
   takeDamage() {
     if (this.gameState === GameState.DEAD || this.damageCooldownRemaining > 0) return false;
-    this.hearts = Math.max(0, this.hearts - 1);
-    this.damageCooldownRemaining = GAME_CONFIG.damageCooldown;
-    this.hitRemaining = GAME_CONFIG.hitDuration;
-    this.gameState = this.hearts === 0 ? GameState.DEAD : GameState.HIT;
-    return true;
+    return this.applyDamage(GameOverReason.OBSTACLE);
+  }
+
+  takeGhostDamage() {
+    if (this.gameState === GameState.DEAD) return false;
+    return this.applyDamage(GameOverReason.GHOST_CAUGHT);
   }
 
   reset() {
@@ -68,8 +76,18 @@ export class GameRuntime {
     this.coins = 0;
     this.hearts = this.maxHearts;
     this.gameState = GameState.RUNNING;
+    this.gameOverReason = null;
     this.damageCooldownRemaining = 0;
     this.hitRemaining = 0;
+  }
+
+  private applyDamage(reason: GameOverReason) {
+    this.hearts = Math.max(0, this.hearts - 1);
+    this.damageCooldownRemaining = GAME_CONFIG.damageCooldown;
+    this.hitRemaining = GAME_CONFIG.hitDuration;
+    this.gameState = this.hearts === 0 ? GameState.DEAD : GameState.HIT;
+    this.gameOverReason = this.hearts === 0 ? reason : null;
+    return true;
   }
 
   getSnapshot(): GameRuntimeSnapshot {
@@ -80,6 +98,7 @@ export class GameRuntime {
       hearts: this.hearts,
       maxHearts: this.maxHearts,
       gameState: this.gameState,
+      gameOverReason: this.gameOverReason,
     };
   }
 }

@@ -1,11 +1,12 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { GameRuntimeSnapshot } from '@/game/GameRuntime';
+import { GameOverReason } from '@/game/GameRuntime';
+import { GameSnapshot } from '@/game/GameSnapshot';
 import { BestStats } from '@/game/BestStatsStore';
 
 interface GameOverScreenProps {
-  snapshot: GameRuntimeSnapshot;
+  snapshot: GameSnapshot;
   best: BestStats;
   onRestart: () => void;
 }
@@ -15,7 +16,9 @@ export default function GameOverScreen({ snapshot, best, onRestart }: GameOverSc
     <View style={styles.backdrop}>
       <View style={styles.card}>
         <Text style={styles.title}>GAME OVER</Text>
-        <Text style={styles.subtitle}>THE NIGHT CAUGHT UP</Text>
+        <Text style={styles.subtitle}>
+          {snapshot.gameOverReason === GameOverReason.GHOST_CAUGHT ? 'THE GHOST CAUGHT YOU' : 'THE NIGHT CAUGHT UP'}
+        </Text>
         <View style={styles.stats}>
           <Text style={styles.stat}>SCORE  <Text style={styles.statValue}>{snapshot.score}</Text></Text>
           <Text style={styles.stat}>DISTANCE  <Text style={styles.statValue}>{Math.floor(snapshot.distance)} m</Text></Text>

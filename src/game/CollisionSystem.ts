@@ -1,4 +1,6 @@
 import { PlayerController } from './PlayerController';
+import * as THREE from 'three';
+
 import { PlayerSnapshot, PlayerState } from './PlayerTypes';
 import { Obstacle } from './Obstacle';
 
@@ -19,6 +21,7 @@ const DEFAULT_CONFIG: CollisionConfig = {
 export class CollisionSystem {
   readonly config: CollisionConfig;
   private readonly reportedObstaclePositions = new Map<Obstacle, number>();
+  private readonly obstacleWorldPosition = new THREE.Vector3();
 
   constructor(config: Partial<CollisionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -45,11 +48,12 @@ export class CollisionSystem {
     for (const obstacle of obstacles) {
       if (!obstacle.isActive()) continue;
       const definition = obstacle.definition;
-      const obstacleMinX = obstacle.position.x - definition.width / 2 + (obstacle.parent?.position.x ?? 0);
-      const obstacleMaxX = obstacle.position.x + definition.width / 2 + (obstacle.parent?.position.x ?? 0);
-      const obstacleMinY = definition.bottom;
-      const obstacleMaxY = definition.bottom + definition.height;
-      const obstacleWorldZ = obstacle.position.z + (obstacle.parent?.parent?.position.z ?? 0);
+      obstacle.getWorldPosition(this.obstacleWorldPosition);
+      const obstacleMinX = this.obstacleWorldPosition.x - definition.width / 2;
+      const obstacleMaxX = this.obstacleWorldPosition.x + definition.width / 2;
+      const obstacleMinY = this.obstacleWorldPosition.y + definition.bottom;
+      const obstacleMaxY = obstacleMinY + definition.height;
+      const obstacleWorldZ = this.obstacleWorldPosition.z;
       const obstacleMinZ = obstacleWorldZ - definition.depth / 2;
       const obstacleMaxZ = obstacleWorldZ + definition.depth / 2;
 

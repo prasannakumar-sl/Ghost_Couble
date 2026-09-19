@@ -1,10 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { GameRuntimeSnapshot } from '@/game/GameRuntime';
+import { GameSnapshot } from '@/game/GameSnapshot';
 
 interface GameHUDProps {
-  snapshot: GameRuntimeSnapshot;
+  snapshot: GameSnapshot;
 }
 
 export default function GameHUD({ snapshot }: GameHUDProps) {
@@ -30,6 +30,12 @@ export default function GameHUD({ snapshot }: GameHUDProps) {
       <View style={styles.coinBadge}>
         <Text style={styles.coinValue}>● {snapshot.coins}</Text>
       </View>
+      {snapshot.ghostChaseRemaining > 0 ? (
+        <View style={styles.chaseBadge}>
+          <Text style={styles.chaseLabel}>GHOST CHASE</Text>
+          <Text style={styles.chaseTimer}>{Math.ceil(snapshot.ghostChaseRemaining)}</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -55,4 +61,19 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 212, 92, 0.4)',
   },
   coinValue: { color: '#ffd45c', fontSize: 13, fontWeight: '800' },
+  chaseBadge: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    backgroundColor: 'rgba(85, 12, 48, 0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 108, 155, 0.72)',
+  },
+  chaseLabel: { color: '#ff9ebc', fontSize: 10, fontWeight: '900', letterSpacing: 1.4 },
+  chaseTimer: { color: '#fff3f7', fontSize: 15, fontWeight: '900' },
 });

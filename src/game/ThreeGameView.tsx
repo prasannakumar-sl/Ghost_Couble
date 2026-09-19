@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
+import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { GLView } from 'expo-gl';
 import { PanResponder, Platform, StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
@@ -11,7 +12,12 @@ import { ChunkManager } from './ChunkManager';
 import { CollisionSystem } from './CollisionSystem';
 import { ObstacleManager } from './ObstacleManager';
 import { CoinManager } from './collectibles/CoinManager';
-import { GameRuntime, GameRuntimeSnapshot, GameState } from './GameRuntime';
+import { GameRuntime, GameState } from './GameRuntime';
+import { GameSnapshot } from './GameSnapshot';
+import { createGhost, updateGhostVisual } from './ghost/Ghost';
+import { GhostAudio } from './ghost/GhostAudio';
+import { GhostController } from './ghost/GhostController';
+import { GhostState } from './ghost/GhostState';
 
 function createPlayer() {
   const player = new THREE.Group();
@@ -57,12 +63,23 @@ function applyCommand(controller: PlayerController, command: InputCommand) {
 
 interface ThreeGameViewProps {
   restartToken: number;
-  onSnapshot: (snapshot: GameRuntimeSnapshot) => void;
+  onSnapshot: (snapshot: GameSnapshot) => void;
 }
+
+const ambientAudio = require('../../assets/audio/ghost_ambient.wav');
+const chaseAudio = require('../../assets/audio/ghost_chase.wav');
+const attackAudio = require('../../assets/audio/ghost_attack.wav');
 
 export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameViewProps) {
   const playerController = useMemo(() => new PlayerController(), []);
   const swipeInput = useMemo(() => new SwipeInput(), []);
+  const ambientPlayer = useAudioPlayer(ambientAudio);
+  const chasePlayer = useAudioPlayer(chaseAudio);
+  const attackPlayer = useAudioPlayer(attackAudio);
+  const ghostAudio = useMemo(
+    () => new GhostAudio(ambientPlayer, chasePlayer, attackPlayer),
+    [ambientPlayer, attackPlayer, chasePlayer],
+  );
   const animationRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const contextCreatedRef = useRef(false);
@@ -74,12 +91,20 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
     onSnapshotRef.current = onSnapshot;
   }, [onSnapshot, restartToken]);
 
+  useEffect(() => {
+    void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
+    return () => ghostAudio.dispose();
+  }, [ghostAudio]);
+
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: swipeInput.onGrant.bind(swipeInput),
+        onPanResponderGrant: (event) => {
+          ghostAudio.startAmbient();
+          swipeInput.onGrant(event);
+        },
         onPanResponderMove: swipeInput.onMove.bind(swipeInput),
         onPanResponderRelease: (event) => {
           const command = swipeInput.onRelease(event);
@@ -87,7 +112,7 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
         },
         onPanResponderTerminate: () => {},
       }),
-    [playerController, swipeInput],
+    [ghostAudio, playerController, swipeInput],
   );
 
   const onContextCreate = async (gl: any) => {
@@ -114,6 +139,7 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
     const obstacleManager = new ObstacleManager(chunkManager);
     const collisionSystem = new CollisionSystem();
     const runtime = new GameRuntime();
+    const ghostController = new GhostController();
     const coinManager = new CoinManager(chunkManager, runtime);
     obstacleManager.update();
     coinManager.update(0, 0);
@@ -137,15 +163,51 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
     renderer.setPixelRatio(1);
 
     const player = createPlayer();
+    const ghost = createGhost();
     scene.add(player);
+    scene.add(ghost);
+    ghostController.reset(playerController.position);
     const cameraController = new CameraController();
     const cameraAnchor = new THREE.Vector3();
     const clock = new THREE.Clock();
     let elapsed = 0;
     let hudElapsed = 0;
     let handledRestartToken = restartTokenRef.current;
+    let cameraShakeRemaining = 0;
+    let ghostCaughtThisFrame = false;
     playerController.start();
-    onSnapshotRef.current(runtime.getSnapshot());
+    ghostAudio.startAmbient();
+
+    const createSnapshot = (): GameSnapshot => {
+      const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
+      return {
+        ...runtime.getSnapshot(),
+        ghostState: ghostSnapshot.state,
+        ghostChaseRemaining: ghostSnapshot.chaseRemaining,
+        ghostDistanceBehind: ghostSnapshot.distanceBehind,
+      };
+    };
+
+    const handleGhostEvent = (event: 'CHASE_STARTED' | 'CHASE_ENDED' | 'CAUGHT' | null) => {
+      if (event === 'CHASE_STARTED') ghostAudio.startChase();
+      if (event === 'CHASE_ENDED') ghostAudio.endChase();
+      if (event !== 'CAUGHT') return;
+      const damaged = runtime.takeGhostDamage();
+      if (!damaged) return;
+      ghostCaughtThisFrame = true;
+      cameraShakeRemaining = runtime.getSnapshot().gameState === GameState.DEAD ? 0.35 : 0.12;
+      if (runtime.getSnapshot().gameState === GameState.DEAD) {
+        playerController.die();
+        ghostAudio.playAttack();
+      } else {
+        playerController.hit();
+        ghostController.reset(playerController.position);
+        ghostAudio.endChase();
+      }
+      onSnapshotRef.current(createSnapshot());
+    };
+
+    onSnapshotRef.current(createSnapshot());
 
     const restart = () => {
       runtime.reset();
@@ -154,15 +216,20 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
       obstacleManager.reset();
       coinManager.reset();
       collisionSystem.reset();
+      ghostController.reset(playerController.position);
+      ghostAudio.reset();
+      cameraShakeRemaining = 0;
+      ghostCaughtThisFrame = false;
       obstacleManager.update();
       coinManager.update(0, elapsed);
       hudElapsed = 0;
-      onSnapshotRef.current(runtime.getSnapshot());
+      onSnapshotRef.current(createSnapshot());
     };
 
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
       const delta = clock.getDelta();
+      ghostCaughtThisFrame = false;
       elapsed += delta;
       if (restartTokenRef.current !== handledRestartToken) {
         handledRestartToken = restartTokenRef.current;
@@ -177,24 +244,49 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
         obstacleManager.update();
         coinManager.update(delta, elapsed);
         coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
-        const collisionSnapshot = playerController.getSnapshot();
-        collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, () => {
-          const damaged = runtime.takeDamage();
-          if (damaged) {
-            if (runtime.getSnapshot().gameState === GameState.DEAD) playerController.die();
-            else playerController.hit();
-          }
-          return damaged;
-        });
+        handleGhostEvent(ghostController.update(delta, playerController.position, playerController.config.speed));
+
+        if (runtime.getSnapshot().gameState !== GameState.DEAD) {
+          const collisionSnapshot = playerController.getSnapshot();
+          collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, () => {
+            const damaged = runtime.takeDamage();
+            if (!damaged) return false;
+            if (runtime.getSnapshot().gameState === GameState.DEAD) {
+              playerController.die();
+              ghostController.kill();
+              ghostAudio.endChase();
+              ghostAudio.stopAmbient();
+            } else {
+              playerController.hit();
+            }
+            if (runtime.getSnapshot().gameState !== GameState.DEAD) {
+              handleGhostEvent(ghostController.startChase());
+            }
+            onSnapshotRef.current(createSnapshot());
+            return true;
+          });
+        }
       }
 
-      const runtimeSnapshot = runtime.getSnapshot();
+      if (!ghostCaughtThisFrame && runtime.getSnapshot().gameState === GameState.DEAD && ghostController.getSnapshot(playerController.position.z).state === GhostState.ATTACK) {
+        ghostController.update(delta, playerController.position, playerController.config.speed);
+      }
+
+      const runtimeSnapshot = createSnapshot();
       hudElapsed += delta;
       if (hudElapsed >= 0.12 || runtimeSnapshot.gameState === GameState.DEAD) {
         hudElapsed = 0;
         onSnapshotRef.current(runtimeSnapshot);
       }
       const snapshot = playerController.getSnapshot();
+      const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
+      ghost.visible = ghostSnapshot.state !== GhostState.DEAD;
+      ghost.position.set(
+        ghostController.position.x,
+        ghostController.position.y + Math.sin(elapsed * 3) * 0.15,
+        ghostController.position.z,
+      );
+      updateGhostVisual(ghost, ghostSnapshot.state, elapsed);
 
       cameraAnchor.set(playerController.position.x, playerController.position.y, playerController.position.z);
       player.position.copy(cameraAnchor);
@@ -204,6 +296,12 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
       player.position.y += snapshot.state === PlayerState.RUN ? Math.sin(elapsed * 12) * 0.045 : 0;
       player.rotation.y = Math.sin(elapsed * 2.4) * 0.025;
       cameraController.update(camera, cameraAnchor, delta);
+      if (cameraShakeRemaining > 0) {
+        cameraShakeRemaining = Math.max(0, cameraShakeRemaining - delta);
+        const shakeStrength = cameraShakeRemaining * 0.22;
+        camera.position.x += (Math.random() - 0.5) * shakeStrength;
+        camera.position.y += (Math.random() - 0.5) * shakeStrength;
+      }
       renderer.render(scene, camera);
       gl.endFrameEXP();
     };

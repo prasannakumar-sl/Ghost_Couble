@@ -5,16 +5,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GameHUD from '@/components/GameHUD';
 import GameOverScreen from '@/components/GameOverScreen';
 import { BestStats, loadBestStats, saveBestStats } from './BestStatsStore';
-import { GameRuntimeSnapshot, GameState } from './GameRuntime';
+import { GameState } from './GameRuntime';
+import { GameSnapshot } from './GameSnapshot';
+import { GhostState } from './ghost/GhostState';
 import ThreeGameView from './ThreeGameView';
 
-const INITIAL_SNAPSHOT: GameRuntimeSnapshot = {
+const INITIAL_SNAPSHOT: GameSnapshot = {
   score: 0,
   distance: 0,
   coins: 0,
   hearts: 3,
   maxHearts: 3,
   gameState: GameState.RUNNING,
+  gameOverReason: null,
+  ghostState: GhostState.FOLLOW,
+  ghostChaseRemaining: 0,
+  ghostDistanceBehind: 4.8,
 };
 
 const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0 };
