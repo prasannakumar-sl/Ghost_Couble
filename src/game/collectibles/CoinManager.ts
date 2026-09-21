@@ -82,64 +82,57 @@ export class CoinManager {
   }
 
   private createPattern(): CoinPlacement[] {
-    const sequence = this.patternIndex;
+    const pattern = this.patternIndex % 20;
     this.patternIndex += 1;
-    const pattern = sequence < 4 ? sequence % 4 : sequence % 10;
 
-    if (pattern === 0) return this.trail([LANES.CENTER], 14);
-    if (pattern === 1) return this.trail([LANES.LEFT], 12);
-    if (pattern === 2) return this.trail([LANES.RIGHT], 12);
-    if (pattern === 3) return this.trail([LANES.CENTER, LANES.LEFT, LANES.CENTER, LANES.RIGHT], 14);
-    if (pattern === 4) return this.trail([LANES.LEFT, LANES.CENTER, LANES.RIGHT, LANES.CENTER], 16);
-    if (pattern === 5) return this.wall(5);
-    if (pattern === 6) return this.jumpTrail();
-    if (pattern === 7) return this.jumpArc();
-    if (pattern === 8) return this.decisionTrail();
-    return this.aroundObstacleTrail();
+    if ([0, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18].includes(pattern)) {
+      return this.trail([LANES.CENTER], 4);
+    }
+    if (pattern === 3) return this.trail([LANES.LEFT], 4);
+    if (pattern === 9) return this.trail([LANES.RIGHT], 4);
+    if (pattern === 15) return this.trail([LANES.LEFT], 5);
+    if (pattern === 5 || pattern === 13) return this.zigzag();
+    if (pattern === 7) return this.obstacleTop();
+    if (pattern === 17) return this.obstacleSide();
+    if (pattern === 11) return this.jumpSmall();
+    return [];
   }
 
   private trail(lanes: readonly number[], count: number, height = 1.15) {
     return Array.from({ length: count }, (_, index) => ({
       lane: lanes[index % lanes.length] as CoinPlacement['lane'],
-      localZ: 13.5 - index * 2,
+      localZ: 10 - index * 1.8,
       height,
     }));
   }
 
-  private wall(rows: number) {
-    return Array.from({ length: rows }, (_, row) =>
-      [LANES.LEFT, LANES.CENTER, LANES.RIGHT].map((lane) => ({
+  private zigzag() {
+    return this.trail([LANES.LEFT, LANES.CENTER, LANES.RIGHT, LANES.CENTER], 5);
+  }
+
+  private jumpSmall() {
+    return [1.55, 1.9, 2.2, 1.9, 1.55].map((height, index) => ({
+      lane: LANES.CENTER,
+      localZ: 9 - index * 1.8,
+      height,
+    }));
+  }
+
+  private obstacleTop() {
+    return [1.95, 2.15, 2.15, 1.95].map((height, index) => ({
+      lane: LANES.CENTER,
+      localZ: 9 - index * 1.8,
+      height,
+    }));
+  }
+
+  private obstacleSide() {
+    return [LANES.LEFT, LANES.RIGHT].flatMap((lane) =>
+      Array.from({ length: 3 }, (_, index) => ({
         lane,
-        localZ: 11.5 - row * 2.2,
+        localZ: 8.5 - index * 1.8,
         height: 1.15,
       })),
-    ).flat();
-  }
-
-  private jumpTrail() {
-    return this.trail([LANES.CENTER], 9, 2.25);
-  }
-
-  private jumpArc() {
-    const heights = [1.45, 1.75, 2.1, 2.35, 2.1, 1.75, 1.45];
-    return heights.map((height, index) => ({
-      lane: LANES.CENTER,
-      localZ: 11.5 - index * 2,
-      height,
-    }));
-  }
-
-  private decisionTrail() {
-    return [
-      ...this.trail([LANES.LEFT], 7),
-      ...this.trail([LANES.RIGHT], 7),
-    ];
-  }
-
-  private aroundObstacleTrail() {
-    return [
-      ...this.trail([LANES.LEFT], 5),
-      ...this.trail([LANES.RIGHT], 5),
-    ];
+    );
   }
 }

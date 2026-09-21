@@ -6,7 +6,7 @@ import { LANES } from '../PlayerTypes';
 import { RoadChunk } from '../RoadChunk';
 import { Shield } from './Shield';
 
-const SHIELD_SPAWN_GAP = 90;
+const SHIELD_SPAWN_GAP = 300;
 const SHIELD_REACTION_DISTANCE = 35;
 const SHIELD_CLEANUP_DISTANCE = 24;
 

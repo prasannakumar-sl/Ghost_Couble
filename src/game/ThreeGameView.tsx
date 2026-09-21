@@ -184,8 +184,8 @@ export default function ThreeGameView({
     const player = createPlayer();
     const ghost = createGhost();
     const shieldAura = new THREE.Mesh(
-      new THREE.SphereGeometry(1.65, 16, 12),
-      new THREE.MeshBasicMaterial({ color: 0x48e7ff, transparent: true, opacity: 0.16, wireframe: true }),
+      new THREE.SphereGeometry(1.15, 12, 8),
+      new THREE.MeshBasicMaterial({ color: 0x48e7ff, transparent: true, opacity: 0.08, wireframe: true }),
     );
     shieldAura.visible = false;
     scene.add(player);
@@ -375,8 +375,8 @@ export default function ThreeGameView({
       const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
       shieldAura.position.set(playerController.position.x, playerController.position.y + 1.25, playerController.position.z);
       shieldAura.visible = runtimeSnapshot.shieldActive || shieldBreakRemaining > 0;
-      shieldAura.scale.setScalar(1 + shieldBreakRemaining * 2);
-      (shieldAura.material as THREE.MeshBasicMaterial).opacity = runtimeSnapshot.shieldActive ? 0.16 : shieldBreakRemaining * 0.7;
+      shieldAura.scale.setScalar(1 + shieldBreakRemaining * 1.2);
+      (shieldAura.material as THREE.MeshBasicMaterial).opacity = runtimeSnapshot.shieldActive ? 0.08 : shieldBreakRemaining * 0.45;
       shieldAura.rotation.y += delta * 1.2;
       ghost.visible = ghostSnapshot.state !== GhostState.HIDDEN;
       ghost.position.set(

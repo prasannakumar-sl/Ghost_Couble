@@ -19,12 +19,12 @@ export class Coin extends THREE.Group {
   constructor() {
     super();
     this.mesh = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.28, 0.28, 0.1, 12),
+      new THREE.CylinderGeometry(0.2, 0.2, 0.07, 12),
       new THREE.MeshStandardMaterial({
         color: 0xffd45c,
         transparent: true,
         emissive: 0x6d3b08,
-        emissiveIntensity: 0.7,
+        emissiveIntensity: 0.55,
         roughness: 0.55,
         metalness: 0.35,
       }),
@@ -62,6 +62,8 @@ export class Coin extends THREE.Group {
     }
     if (!this.active) return;
     this.mesh.rotation.y += deltaTime * 4.2;
+    const pulse = 1 + Math.sin(elapsed * 3 + this.bobPhase) * 0.025;
+    this.mesh.scale.setScalar(pulse);
     this.position.y = this.baseY + Math.sin(elapsed * 4 + this.bobPhase) * 0.08;
   }
 

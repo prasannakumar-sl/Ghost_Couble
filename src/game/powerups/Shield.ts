@@ -9,12 +9,12 @@ export class Shield extends THREE.Group {
   constructor() {
     super();
     const shape = new THREE.Shape();
-    shape.moveTo(0, 0.62);
-    shape.lineTo(0.52, 0.34);
-    shape.lineTo(0.43, -0.32);
-    shape.lineTo(0, -0.62);
-    shape.lineTo(-0.43, -0.32);
-    shape.lineTo(-0.52, 0.34);
+    shape.moveTo(0, 0.32);
+    shape.lineTo(0.27, 0.18);
+    shape.lineTo(0.23, -0.17);
+    shape.lineTo(0, -0.32);
+    shape.lineTo(-0.23, -0.17);
+    shape.lineTo(-0.27, 0.18);
     shape.closePath();
     const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.12, bevelEnabled: true, bevelSize: 0.04, bevelThickness: 0.03, bevelSegments: 2 });
     geometry.center();
@@ -23,11 +23,11 @@ export class Shield extends THREE.Group {
       new THREE.MeshStandardMaterial({
         color: 0x48e7ff,
         emissive: 0x087dba,
-        emissiveIntensity: 1.2,
+        emissiveIntensity: 0.7,
         metalness: 0.4,
         roughness: 0.3,
         transparent: true,
-        opacity: 0.95,
+        opacity: 0.88,
       }),
     );
     this.add(this.mesh);
@@ -45,9 +45,11 @@ export class Shield extends THREE.Group {
 
   update(deltaTime: number, elapsed: number) {
     if (!this.active) return;
-    this.mesh.rotation.y += deltaTime * 1.8;
-    this.mesh.rotation.z = Math.sin(elapsed * 2 + this.phase) * 0.08;
-    this.position.y = this.baseY + Math.sin(elapsed * 2.5 + this.phase) * 0.1;
+    this.mesh.rotation.y += deltaTime * 1.1;
+    this.mesh.rotation.z = Math.sin(elapsed * 2 + this.phase) * 0.04;
+    const pulse = 1 + Math.sin(elapsed * 2.5 + this.phase) * 0.05;
+    this.mesh.scale.setScalar(pulse);
+    this.position.y = this.baseY + Math.sin(elapsed * 2.5 + this.phase) * 0.06;
   }
 
   collect() {
