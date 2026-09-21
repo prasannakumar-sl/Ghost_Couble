@@ -23,6 +23,8 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
   ghostDistanceBehind: 4.8,
   shieldActive: false,
   shieldRemaining: 0,
+  magnetActive: false,
+  magnetRemaining: 0,
 };
 
 const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0, totalCoins: 0 };

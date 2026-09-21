@@ -21,6 +21,8 @@ export interface GameRuntimeSnapshot {
   gameOverReason: GameOverReason | null;
   shieldActive: boolean;
   shieldRemaining: number;
+  magnetActive: boolean;
+  magnetRemaining: number;
 }
 
 export class GameRuntime {
@@ -35,6 +37,7 @@ export class GameRuntime {
   private hitRemaining = 0;
   private ghostAttacking = false;
   private shieldRemaining = 0;
+  private magnetRemaining = 0;
 
   constructor(maxHearts = GAME_CONFIG.maxHearts) {
     this.maxHearts = maxHearts;
@@ -51,6 +54,10 @@ export class GameRuntime {
       this.shieldRemaining = Math.max(0, this.shieldRemaining - delta);
       if (this.shieldRemaining === 0) console.log('[SHIELD] Expired');
     }
+    if (this.magnetRemaining > 0) {
+      this.magnetRemaining = Math.max(0, this.magnetRemaining - delta);
+      if (this.magnetRemaining === 0) console.log('[MAGNET] Expired');
+    }
     if (this.hitRemaining > 0) {
       this.hitRemaining = Math.max(0, this.hitRemaining - delta);
       if (this.hitRemaining === 0 && this.gameState === GameState.HIT && !this.ghostAttacking) {
@@ -62,6 +69,18 @@ export class GameRuntime {
     this.currentRunDistance += Math.max(0, forwardSpeed) * delta;
     this.currentRunScore =
       Math.floor(this.currentRunDistance * GAME_CONFIG.scorePerMeter) + this.currentRunCoins * GAME_CONFIG.scorePerCoin;
+  }
+
+  activateMagnet(duration: number) {
+    if (this.gameState !== GameState.RUNNING) return false;
+    this.magnetRemaining = duration;
+    return true;
+  }
+
+  heal() {
+    if (this.gameState !== GameState.RUNNING || this.currentRunHearts >= this.maxHearts) return false;
+    this.currentRunHearts += 1;
+    return true;
   }
 
   collectCoin() {
@@ -88,6 +107,7 @@ export class GameRuntime {
     this.hitRemaining = 0;
     this.ghostAttacking = false;
     this.shieldRemaining = 0;
+    this.magnetRemaining = 0;
   }
 
   activateShield(duration: number) {
@@ -146,6 +166,8 @@ export class GameRuntime {
       gameOverReason: this.gameOverReason,
       shieldActive: this.shieldRemaining > 0,
       shieldRemaining: this.shieldRemaining,
+      magnetActive: this.magnetRemaining > 0,
+      magnetRemaining: this.magnetRemaining,
     };
   }
 }

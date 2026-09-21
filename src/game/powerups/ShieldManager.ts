@@ -28,6 +28,7 @@ export class ShieldManager {
     playerZ: number,
     distance: number,
     gameState: GameState,
+    otherPickupActive = false,
   ) {
     this.shield.update(deltaTime, elapsed);
     if (this.shield.isActive()) {
@@ -37,7 +38,7 @@ export class ShieldManager {
         this.shield.removeFromParent();
       }
     }
-    if (gameState !== GameState.RUNNING || this.shield.isActive()) return;
+    if (gameState !== GameState.RUNNING || this.shield.isActive() || otherPickupActive) return;
 
     const chunks = this.getChunks();
     for (const chunk of chunks) {

@@ -2,6 +2,8 @@ import * as THREE from 'three';
 
 import { Lane } from '../PlayerTypes';
 
+const worldPosition = new THREE.Vector3();
+
 export interface CoinPlacement {
   lane: Lane;
   localZ: number;
@@ -65,6 +67,16 @@ export class Coin extends THREE.Group {
     const pulse = 1 + Math.sin(elapsed * 3 + this.bobPhase) * 0.025;
     this.mesh.scale.setScalar(pulse);
     this.position.y = this.baseY + Math.sin(elapsed * 4 + this.bobPhase) * 0.08;
+  }
+
+  attractTo(x: number, y: number, z: number, deltaTime: number) {
+    if (!this.active) return;
+    this.getWorldPosition(worldPosition);
+    const blend = 1 - Math.exp(-deltaTime * 8);
+    this.position.x += (x - worldPosition.x) * blend;
+    this.position.y += (y - worldPosition.y) * blend;
+    this.position.z += (z - worldPosition.z) * blend;
+    this.baseY = this.position.y;
   }
 
   collect() {

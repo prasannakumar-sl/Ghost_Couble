@@ -13,6 +13,7 @@ import { CollisionSystem } from './CollisionSystem';
 import { ObstacleManager } from './ObstacleManager';
 import { CoinManager } from './collectibles/CoinManager';
 import { GameRuntime, GameState } from './GameRuntime';
+import { PowerUpManager } from './powerups/PowerUpManager';
 import { ShieldManager } from './powerups/ShieldManager';
 import { GAME_CONFIG } from './config/gameConfig';
 import { GameSnapshot } from './GameSnapshot';
@@ -157,11 +158,13 @@ export default function ThreeGameView({
     const collisionSystem = new CollisionSystem();
     const runtime = new GameRuntime();
     const ghostController = new GhostController();
-    const coinManager = new CoinManager(chunkManager, runtime);
+    const coinManager = new CoinManager(chunkManager, runtime, playerController.config);
     const shieldManager = new ShieldManager(chunkManager);
+    const powerUpManager = new PowerUpManager(chunkManager, runtime);
     obstacleManager.update();
     coinManager.update(0, 0);
-    shieldManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING);
+    shieldManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, false);
+    powerUpManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
 
     const camera = new THREE.PerspectiveCamera(58, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 180);
     camera.position.set(0, 5.2, 8.5);
@@ -254,6 +257,7 @@ export default function ThreeGameView({
       ghostController.reset(playerController.position);
       ghostAudio.reset();
       shieldManager.reset();
+      powerUpManager.reset();
       cameraShakeRemaining = 0;
       shieldBreakRemaining = 0;
       deathSequenceStarted = false;
@@ -265,7 +269,8 @@ export default function ThreeGameView({
       console.log('[GAME] Restarting');
       obstacleManager.update();
       coinManager.update(0, elapsed);
-      shieldManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING);
+      shieldManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, false);
+      powerUpManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
       hudElapsed = 0;
       onSnapshotRef.current(createSnapshot());
     };
@@ -301,10 +306,27 @@ export default function ThreeGameView({
           obstacleManager.update();
           const coinsBeforeCollection = runtime.getSnapshot().coins;
           coinManager.update(delta, elapsed);
+          powerUpManager.update(
+            delta,
+            elapsed,
+            playerController.position.z,
+            runtimeBeforeGhost.distance,
+            runtimeBeforeGhost.gameState,
+            shieldManager.shield.isActive(),
+          );
+          coinManager.attract(playerController.position.x, playerController.position.y, playerController.position.z, delta);
           coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+          powerUpManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
           const collectedCoins = runtime.getSnapshot().coins - coinsBeforeCollection;
           if (collectedCoins > 0) onCoinsCollectedRef.current(collectedCoins);
-          shieldManager.update(delta, elapsed, playerController.position.z, runtimeBeforeGhost.distance, runtimeBeforeGhost.gameState);
+          shieldManager.update(
+            delta,
+            elapsed,
+            playerController.position.z,
+            runtimeBeforeGhost.distance,
+            runtimeBeforeGhost.gameState,
+            powerUpManager.magnet.isActive() || powerUpManager.extraHeart.isActive(),
+          );
           if (
             runtime.getSnapshot().gameState === GameState.RUNNING &&
             shieldManager.collect(playerController.position.x, playerController.position.y, playerController.position.z)
@@ -410,6 +432,7 @@ export default function ThreeGameView({
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
       coinManager.dispose();
       shieldManager.dispose();
+      powerUpManager.dispose();
       obstacleManager.dispose();
       chunkManager.dispose();
       renderer.dispose();
