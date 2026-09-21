@@ -63,6 +63,8 @@ function applyCommand(controller: PlayerController, command: InputCommand) {
 
 interface ThreeGameViewProps {
   restartToken: number;
+  previousBestDistance: number;
+  bestStatsLoaded: boolean;
   onSnapshot: (snapshot: GameSnapshot) => void;
 }
 
@@ -70,7 +72,12 @@ const ambientAudio = require('../../assets/audio/ghost_ambient.wav');
 const chaseAudio = require('../../assets/audio/ghost_chase.wav');
 const attackAudio = require('../../assets/audio/ghost_attack.wav');
 
-export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameViewProps) {
+export default function ThreeGameView({
+  restartToken,
+  previousBestDistance,
+  bestStatsLoaded,
+  onSnapshot,
+}: ThreeGameViewProps) {
   const playerController = useMemo(() => new PlayerController(), []);
   const swipeInput = useMemo(() => new SwipeInput(), []);
   const ambientPlayer = useAudioPlayer(ambientAudio);
@@ -84,12 +91,16 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
   const cleanupRef = useRef<(() => void) | null>(null);
   const contextCreatedRef = useRef(false);
   const restartTokenRef = useRef(restartToken);
+  const previousBestDistanceRef = useRef(previousBestDistance);
+  const bestStatsLoadedRef = useRef(bestStatsLoaded);
   const onSnapshotRef = useRef(onSnapshot);
 
   useEffect(() => {
     restartTokenRef.current = restartToken;
+    previousBestDistanceRef.current = previousBestDistance;
+    bestStatsLoadedRef.current = bestStatsLoaded;
     onSnapshotRef.current = onSnapshot;
-  }, [onSnapshot, restartToken]);
+  }, [bestStatsLoaded, onSnapshot, previousBestDistance, restartToken]);
 
   useEffect(() => {
     void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
@@ -174,7 +185,8 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
     let hudElapsed = 0;
     let handledRestartToken = restartTokenRef.current;
     let cameraShakeRemaining = 0;
-    let ghostCaughtThisFrame = false;
+
+    let hasBeatenPreviousBest = false;
     playerController.start();
     ghostAudio.startAmbient();
 
@@ -188,23 +200,22 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
       };
     };
 
-    const handleGhostEvent = (event: 'CHASE_STARTED' | 'CHASE_ENDED' | 'CAUGHT' | null) => {
+    const handleGhostEvent = (event: 'CHASE_STARTED' | 'CHASE_ENDED' | 'ATTACK_STARTED' | 'ATTACK_FINISHED' | null) => {
       if (event === 'CHASE_STARTED') ghostAudio.startChase();
-      if (event === 'CHASE_ENDED') ghostAudio.endChase();
-      if (event !== 'CAUGHT') return;
-      const damaged = runtime.takeGhostDamage();
-      if (!damaged) return;
-      ghostCaughtThisFrame = true;
-      cameraShakeRemaining = runtime.getSnapshot().gameState === GameState.DEAD ? 0.35 : 0.12;
-      if (runtime.getSnapshot().gameState === GameState.DEAD) {
-        playerController.die();
-        ghostAudio.playAttack();
-      } else {
-        playerController.hit();
-        ghostController.reset(playerController.position);
+      if (event === 'CHASE_ENDED') {
         ghostAudio.endChase();
+        ghostAudio.stopAmbient();
       }
-      onSnapshotRef.current(createSnapshot());
+      if (event === 'ATTACK_STARTED') {
+
+        cameraShakeRemaining = 0.35;
+        ghostAudio.playAttack();
+      }
+      if (event === 'ATTACK_FINISHED') {
+        runtime.finishGhostAttack();
+        playerController.die();
+      }
+      if (event) onSnapshotRef.current(createSnapshot());
     };
 
     onSnapshotRef.current(createSnapshot());
@@ -219,7 +230,8 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
       ghostController.reset(playerController.position);
       ghostAudio.reset();
       cameraShakeRemaining = 0;
-      ghostCaughtThisFrame = false;
+
+      hasBeatenPreviousBest = false;
       obstacleManager.update();
       coinManager.update(0, elapsed);
       hudElapsed = 0;
@@ -229,7 +241,7 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
       const delta = clock.getDelta();
-      ghostCaughtThisFrame = false;
+
       elapsed += delta;
       if (restartTokenRef.current !== handledRestartToken) {
         handledRestartToken = restartTokenRef.current;
@@ -238,7 +250,18 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
 
       if (runtime.getSnapshot().gameState !== GameState.DEAD) {
         runtime.update(delta, playerController.config.speed);
-        if (runtime.getSnapshot().gameState === GameState.RUNNING) playerController.recoverHit();
+        const runtimeBeforeGhost = runtime.getSnapshot();
+        if (
+          bestStatsLoadedRef.current &&
+          !hasBeatenPreviousBest &&
+          runtimeBeforeGhost.distance > previousBestDistanceRef.current
+        ) {
+          hasBeatenPreviousBest = true;
+          ghostController.hide();
+          ghostAudio.endChase();
+          ghostAudio.stopAmbient();
+        }
+        if (runtimeBeforeGhost.gameState === GameState.RUNNING) playerController.recoverHit();
         playerController.update(delta);
         chunkManager.update(playerController.position.z);
         obstacleManager.update();
@@ -251,25 +274,18 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
           collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, () => {
             const damaged = runtime.takeDamage();
             if (!damaged) return false;
-            if (runtime.getSnapshot().gameState === GameState.DEAD) {
-              playerController.die();
-              ghostController.kill();
-              ghostAudio.endChase();
-              ghostAudio.stopAmbient();
+            const damagedSnapshot = runtime.getSnapshot();
+            if (damagedSnapshot.hearts === 0) {
+              runtime.beginGhostAttack();
+              handleGhostEvent(ghostController.startAttack());
             } else {
               playerController.hit();
-            }
-            if (runtime.getSnapshot().gameState !== GameState.DEAD) {
               handleGhostEvent(ghostController.startChase());
             }
             onSnapshotRef.current(createSnapshot());
             return true;
           });
         }
-      }
-
-      if (!ghostCaughtThisFrame && runtime.getSnapshot().gameState === GameState.DEAD && ghostController.getSnapshot(playerController.position.z).state === GhostState.ATTACK) {
-        ghostController.update(delta, playerController.position, playerController.config.speed);
       }
 
       const runtimeSnapshot = createSnapshot();
@@ -280,7 +296,7 @@ export default function ThreeGameView({ restartToken, onSnapshot }: ThreeGameVie
       }
       const snapshot = playerController.getSnapshot();
       const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
-      ghost.visible = ghostSnapshot.state !== GhostState.DEAD;
+      ghost.visible = ghostSnapshot.state !== GhostState.HIDDEN;
       ghost.position.set(
         ghostController.position.x,
         ghostController.position.y + Math.sin(elapsed * 3) * 0.15,

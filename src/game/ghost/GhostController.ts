@@ -18,7 +18,7 @@ export interface GhostSnapshot {
   distanceBehind: number;
 }
 
-export type GhostEvent = 'CHASE_STARTED' | 'CHASE_ENDED' | 'CAUGHT';
+export type GhostEvent = 'CHASE_STARTED' | 'CHASE_ENDED' | 'ATTACK_STARTED' | 'ATTACK_FINISHED';
 
 const DEFAULT_GHOST_CONFIG: GhostConfig = {
   normalDistance: 4.8,
@@ -39,6 +39,7 @@ export class GhostController {
   private state = GhostState.FOLLOW;
   private chaseRemaining = 0;
   private attackElapsed = 0;
+  private attackFinished = false;
 
   constructor(config: Partial<GhostConfig> = {}) {
     this.config = { ...DEFAULT_GHOST_CONFIG, ...config };
@@ -46,7 +47,7 @@ export class GhostController {
 
   update(deltaTime: number, player: { x: number; y: number; z: number }, playerSpeed: number): GhostEvent | null {
     const delta = Math.min(deltaTime, 0.05);
-    if (this.state === GhostState.DEAD) return null;
+    if (this.state === GhostState.HIDDEN || this.attackFinished) return null;
 
     if (this.state === GhostState.ATTACK) {
       this.attackElapsed += delta;
@@ -54,7 +55,10 @@ export class GhostController {
       this.position.x += (player.x - this.position.x) * attackBlend;
       this.position.y += (player.y + 0.8 - this.position.y) * attackBlend;
       this.position.z += (player.z - this.position.z) * attackBlend;
-      if (this.attackElapsed >= this.config.attackDuration) this.state = GhostState.DEAD;
+      if (this.attackElapsed >= this.config.attackDuration) {
+        this.attackFinished = true;
+        return 'ATTACK_FINISHED';
+      }
       return null;
     }
 
@@ -65,17 +69,12 @@ export class GhostController {
       chaseEnded = this.chaseRemaining === 0;
     }
 
-    const speedMultiplier = wasChasing
-      ? this.config.chaseSpeedMultiplier
-      : this.config.normalSpeedMultiplier;
+    const speedMultiplier = wasChasing ? this.config.chaseSpeedMultiplier : this.config.normalSpeedMultiplier;
     const smoothing = wasChasing ? this.config.chaseSmoothing : this.config.followSmoothing;
     const chaseProgress = 1 - this.chaseRemaining / this.config.chaseDuration;
     const chaseTarget = this.config.normalDistance
       - Math.min(1, chaseProgress / 0.7) * (this.config.normalDistance - this.config.chaseDistance);
-    const attackTarget = Math.max(0, (chaseProgress - 0.7) / 0.3);
-    const desiredDistance = wasChasing
-      ? chaseTarget - attackTarget * (this.config.chaseDistance - this.config.killDistance)
-      : this.config.normalDistance;
+    const desiredDistance = wasChasing ? Math.max(this.config.chaseDistance, chaseTarget) : this.config.normalDistance;
     const blend = 1 - Math.exp(-smoothing * delta);
     const desiredX = player.x;
     const desiredY = player.y + 0.9;
@@ -85,29 +84,29 @@ export class GhostController {
 
     this.position.x += (desiredX - this.position.x) * blend;
     this.position.y += (desiredY - this.position.y) * blend;
-    this.position.z = predictedZ + (desiredZ - predictedZ) * blend;
-
-    const distanceBehind = this.position.z - player.z;
-    if (distanceBehind <= this.config.killDistance) {
-      this.state = GhostState.ATTACK;
-      this.chaseRemaining = 0;
-      this.attackElapsed = 0;
-      return 'CAUGHT';
-    }
+    this.position.z = Math.max(desiredZ, predictedZ + (desiredZ - predictedZ) * blend);
 
     if (chaseEnded) {
-      this.state = GhostState.FOLLOW;
+      this.state = GhostState.HIDDEN;
       return 'CHASE_ENDED';
     }
     return null;
   }
 
   startChase() {
-    if (this.state === GhostState.ATTACK || this.state === GhostState.DEAD) return null;
+    if (this.state === GhostState.ATTACK || this.attackFinished) return null;
     const wasChasing = this.state === GhostState.CHASE;
     this.state = GhostState.CHASE;
     this.chaseRemaining = this.config.chaseDuration;
     return wasChasing ? null : 'CHASE_STARTED';
+  }
+
+  startAttack() {
+    if (this.state === GhostState.ATTACK || this.attackFinished) return null;
+    this.state = GhostState.ATTACK;
+    this.chaseRemaining = 0;
+    this.attackElapsed = 0;
+    return 'ATTACK_STARTED' as const;
   }
 
   reset(player: { x: number; y: number; z: number }) {
@@ -117,10 +116,11 @@ export class GhostController {
     this.state = GhostState.FOLLOW;
     this.chaseRemaining = 0;
     this.attackElapsed = 0;
+    this.attackFinished = false;
   }
 
-  kill() {
-    this.state = GhostState.DEAD;
+  hide() {
+    if (this.state !== GhostState.ATTACK) this.state = GhostState.HIDDEN;
     this.chaseRemaining = 0;
   }
 

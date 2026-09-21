@@ -29,11 +29,15 @@ export default function GameScene() {
   const insets = useSafeAreaInsets();
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
   const [best, setBest] = useState(INITIAL_BEST);
+  const [bestStatsLoaded, setBestStatsLoaded] = useState(false);
   const [restartToken, setRestartToken] = useState(0);
   const savedGameOverRef = useRef(false);
 
   useEffect(() => {
-    void loadBestStats().then(setBest);
+    void loadBestStats().then((nextBest) => {
+      setBest(nextBest);
+      setBestStatsLoaded(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -56,7 +60,12 @@ export default function GameScene() {
 
   return (
     <View style={styles.container}>
-      <ThreeGameView restartToken={restartToken} onSnapshot={setSnapshot} />
+      <ThreeGameView
+        restartToken={restartToken}
+        previousBestDistance={best.bestDistance}
+        bestStatsLoaded={bestStatsLoaded}
+        onSnapshot={setSnapshot}
+      />
       <View pointerEvents="none" style={[styles.titleHud, { paddingTop: Math.max(18, insets.top + 4) }]}>
         <Text style={styles.title}>GHOST COUPLE</Text>
         <Text style={styles.subtitle}>SWIPE TO RUN THE NIGHT</Text>

@@ -23,18 +23,19 @@ export interface GameRuntimeSnapshot {
 
 export class GameRuntime {
   private readonly maxHearts: number;
-  private score = 0;
-  private distance = 0;
-  private coins = 0;
-  private hearts: number;
+  private currentRunScore = 0;
+  private currentRunDistance = 0;
+  private currentRunCoins = 0;
+  private currentRunHearts: number;
   private gameState = GameState.RUNNING;
   private gameOverReason: GameOverReason | null = null;
   private damageCooldownRemaining = 0;
   private hitRemaining = 0;
+  private ghostAttacking = false;
 
   constructor(maxHearts = GAME_CONFIG.maxHearts) {
     this.maxHearts = maxHearts;
-    this.hearts = maxHearts;
+    this.currentRunHearts = maxHearts;
   }
 
   update(deltaTime: number, forwardSpeed: number) {
@@ -44,58 +45,71 @@ export class GameRuntime {
     }
     if (this.hitRemaining > 0) {
       this.hitRemaining = Math.max(0, this.hitRemaining - delta);
-      if (this.hitRemaining === 0 && this.gameState === GameState.HIT) {
+      if (this.hitRemaining === 0 && this.gameState === GameState.HIT && !this.ghostAttacking) {
         this.gameState = GameState.RUNNING;
       }
     }
     if (this.gameState !== GameState.RUNNING) return;
 
-    this.distance += Math.max(0, forwardSpeed) * delta;
-    this.score = Math.floor(this.distance * GAME_CONFIG.scorePerMeter) + this.coins * GAME_CONFIG.scorePerCoin;
+    this.currentRunDistance += Math.max(0, forwardSpeed) * delta;
+    this.currentRunScore =
+      Math.floor(this.currentRunDistance * GAME_CONFIG.scorePerMeter) + this.currentRunCoins * GAME_CONFIG.scorePerCoin;
   }
 
   collectCoin() {
     if (this.gameState === GameState.DEAD) return;
-    this.coins += 1;
-    this.score += GAME_CONFIG.scorePerCoin;
+    this.currentRunCoins += 1;
+    this.currentRunScore += GAME_CONFIG.scorePerCoin;
   }
 
   takeDamage() {
     if (this.gameState === GameState.DEAD || this.damageCooldownRemaining > 0) return false;
-    return this.applyDamage(GameOverReason.OBSTACLE);
-  }
-
-  takeGhostDamage() {
-    if (this.gameState === GameState.DEAD) return false;
-    return this.applyDamage(GameOverReason.GHOST_CAUGHT);
+    return this.applyDamage();
   }
 
   reset() {
-    this.score = 0;
-    this.distance = 0;
-    this.coins = 0;
-    this.hearts = this.maxHearts;
+    this.currentRunScore = 0;
+    this.currentRunDistance = 0;
+    this.currentRunCoins = 0;
+    this.currentRunHearts = this.maxHearts;
     this.gameState = GameState.RUNNING;
     this.gameOverReason = null;
     this.damageCooldownRemaining = 0;
     this.hitRemaining = 0;
+    this.ghostAttacking = false;
   }
 
-  private applyDamage(reason: GameOverReason) {
-    this.hearts = Math.max(0, this.hearts - 1);
+  beginGhostAttack() {
+    if (this.currentRunHearts !== 0 || this.gameState === GameState.DEAD) return false;
+    this.ghostAttacking = true;
+    this.gameState = GameState.HIT;
+    this.gameOverReason = null;
+    return true;
+  }
+
+  finishGhostAttack() {
+    if (!this.ghostAttacking) return false;
+    this.ghostAttacking = false;
+    this.gameState = GameState.DEAD;
+    this.gameOverReason = GameOverReason.GHOST_CAUGHT;
+    return true;
+  }
+
+  private applyDamage() {
+    this.currentRunHearts = Math.max(0, this.currentRunHearts - 1);
     this.damageCooldownRemaining = GAME_CONFIG.damageCooldown;
     this.hitRemaining = GAME_CONFIG.hitDuration;
-    this.gameState = this.hearts === 0 ? GameState.DEAD : GameState.HIT;
-    this.gameOverReason = this.hearts === 0 ? reason : null;
+    this.gameState = GameState.HIT;
+    this.gameOverReason = null;
     return true;
   }
 
   getSnapshot(): GameRuntimeSnapshot {
     return {
-      score: this.score,
-      distance: this.distance,
-      coins: this.coins,
-      hearts: this.hearts,
+      score: this.currentRunScore,
+      distance: this.currentRunDistance,
+      coins: this.currentRunCoins,
+      hearts: this.currentRunHearts,
       maxHearts: this.maxHearts,
       gameState: this.gameState,
       gameOverReason: this.gameOverReason,
