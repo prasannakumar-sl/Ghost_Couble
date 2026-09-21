@@ -87,7 +87,7 @@ export class GhostController {
     this.position.z = Math.max(desiredZ, predictedZ + (desiredZ - predictedZ) * blend);
 
     if (chaseEnded) {
-      this.state = GhostState.HIDDEN;
+      this.state = GhostState.FOLLOW;
       return 'CHASE_ENDED';
     }
     return null;

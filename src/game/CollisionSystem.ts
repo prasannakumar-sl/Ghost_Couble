@@ -31,7 +31,7 @@ export class CollisionSystem {
     player: PlayerController,
     snapshot: PlayerSnapshot,
     obstacles: readonly Obstacle[],
-    onHit: () => boolean,
+    onHit: (obstacle: Obstacle) => boolean,
   ) {
     if (snapshot.state === PlayerState.HIT || snapshot.state === PlayerState.DEAD) return;
 
@@ -66,7 +66,7 @@ export class CollisionSystem {
         playerMaxZ > obstacleMinZ
       ) {
         if (this.reportedObstaclePositions.get(obstacle) === obstacleWorldZ) return;
-        if (onHit()) this.reportedObstaclePositions.set(obstacle, obstacleWorldZ);
+        if (onHit(obstacle)) this.reportedObstaclePositions.set(obstacle, obstacleWorldZ);
         return;
       }
     }

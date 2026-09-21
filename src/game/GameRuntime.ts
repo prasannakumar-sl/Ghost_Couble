@@ -36,6 +36,7 @@ export class GameRuntime {
   constructor(maxHearts = GAME_CONFIG.maxHearts) {
     this.maxHearts = maxHearts;
     this.currentRunHearts = maxHearts;
+    console.log('[GAME] Health initialized:', this.currentRunHearts);
   }
 
   update(deltaTime: number, forwardSpeed: number) {
@@ -62,9 +63,9 @@ export class GameRuntime {
     this.currentRunScore += GAME_CONFIG.scorePerCoin;
   }
 
-  takeDamage() {
+  takeDamage(amount = 1) {
     if (this.gameState === GameState.DEAD || this.damageCooldownRemaining > 0) return false;
-    return this.applyDamage();
+    return this.applyDamage(amount);
   }
 
   reset() {
@@ -72,6 +73,7 @@ export class GameRuntime {
     this.currentRunDistance = 0;
     this.currentRunCoins = 0;
     this.currentRunHearts = this.maxHearts;
+    console.log('[GAME] Health initialized:', this.currentRunHearts);
     this.gameState = GameState.RUNNING;
     this.gameOverReason = null;
     this.damageCooldownRemaining = 0;
@@ -95,12 +97,15 @@ export class GameRuntime {
     return true;
   }
 
-  private applyDamage() {
-    this.currentRunHearts = Math.max(0, this.currentRunHearts - 1);
+  private applyDamage(amount: number) {
+    this.currentRunHearts = Math.max(0, this.currentRunHearts - amount);
+    console.log('[HEALTH] Damage received:', amount, 'Health:', this.currentRunHearts);
+    console.log('[HEALTH] Current health:', this.currentRunHearts);
     this.damageCooldownRemaining = GAME_CONFIG.damageCooldown;
     this.hitRemaining = GAME_CONFIG.hitDuration;
     this.gameState = GameState.HIT;
     this.gameOverReason = null;
+    if (this.currentRunHearts === 0) console.log('[HEALTH] ZERO HEARTS - PLAYER DEAD');
     return true;
   }
 

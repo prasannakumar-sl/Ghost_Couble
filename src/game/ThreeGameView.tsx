@@ -204,7 +204,7 @@ export default function ThreeGameView({
       if (event === 'CHASE_STARTED') ghostAudio.startChase();
       if (event === 'CHASE_ENDED') {
         ghostAudio.endChase();
-        ghostAudio.stopAmbient();
+        ghostAudio.startAmbient();
       }
       if (event === 'ATTACK_STARTED') {
 
@@ -271,8 +271,9 @@ export default function ThreeGameView({
 
         if (runtime.getSnapshot().gameState !== GameState.DEAD) {
           const collisionSnapshot = playerController.getSnapshot();
-          collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, () => {
-            const damaged = runtime.takeDamage();
+          collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
+            console.log('[COLLISION] Player hit obstacle', obstacle.uuid);
+            const damaged = runtime.takeDamage(1);
             if (!damaged) return false;
             const damagedSnapshot = runtime.getSnapshot();
             if (damagedSnapshot.hearts === 0) {
@@ -280,6 +281,7 @@ export default function ThreeGameView({
               handleGhostEvent(ghostController.startAttack());
             } else {
               playerController.hit();
+              console.log('[GHOST] Chase started because player lost a heart');
               handleGhostEvent(ghostController.startChase());
             }
             onSnapshotRef.current(createSnapshot());
