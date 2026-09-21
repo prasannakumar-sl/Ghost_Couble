@@ -13,6 +13,8 @@ import { CollisionSystem } from './CollisionSystem';
 import { ObstacleManager } from './ObstacleManager';
 import { CoinManager } from './collectibles/CoinManager';
 import { GameRuntime, GameState } from './GameRuntime';
+import { ShieldManager } from './powerups/ShieldManager';
+import { GAME_CONFIG } from './config/gameConfig';
 import { GameSnapshot } from './GameSnapshot';
 import { createGhost, updateGhostVisual } from './ghost/Ghost';
 import { GhostAudio } from './ghost/GhostAudio';
@@ -156,8 +158,10 @@ export default function ThreeGameView({
     const runtime = new GameRuntime();
     const ghostController = new GhostController();
     const coinManager = new CoinManager(chunkManager, runtime);
+    const shieldManager = new ShieldManager(chunkManager);
     obstacleManager.update();
     coinManager.update(0, 0);
+    shieldManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING);
 
     const camera = new THREE.PerspectiveCamera(58, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 180);
     camera.position.set(0, 5.2, 8.5);
@@ -179,8 +183,14 @@ export default function ThreeGameView({
 
     const player = createPlayer();
     const ghost = createGhost();
+    const shieldAura = new THREE.Mesh(
+      new THREE.SphereGeometry(1.65, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0x48e7ff, transparent: true, opacity: 0.16, wireframe: true }),
+    );
+    shieldAura.visible = false;
     scene.add(player);
     scene.add(ghost);
+    scene.add(shieldAura);
     ghostController.reset(playerController.position);
     const cameraController = new CameraController();
     const cameraAnchor = new THREE.Vector3();
@@ -193,6 +203,7 @@ export default function ThreeGameView({
     let deathEffectActive = false;
     let deathEffectElapsed = 0;
     let gameOverDelayRemaining = 0;
+    let shieldBreakRemaining = 0;
 
     let hasBeatenPreviousBest = false;
     playerController.start();
@@ -242,7 +253,9 @@ export default function ThreeGameView({
       collisionSystem.reset();
       ghostController.reset(playerController.position);
       ghostAudio.reset();
+      shieldManager.reset();
       cameraShakeRemaining = 0;
+      shieldBreakRemaining = 0;
       deathSequenceStarted = false;
       deathEffectActive = false;
       deathEffectElapsed = 0;
@@ -252,6 +265,7 @@ export default function ThreeGameView({
       console.log('[GAME] Restarting');
       obstacleManager.update();
       coinManager.update(0, elapsed);
+      shieldManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING);
       hudElapsed = 0;
       onSnapshotRef.current(createSnapshot());
     };
@@ -290,6 +304,14 @@ export default function ThreeGameView({
           coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
           const collectedCoins = runtime.getSnapshot().coins - coinsBeforeCollection;
           if (collectedCoins > 0) onCoinsCollectedRef.current(collectedCoins);
+          shieldManager.update(delta, elapsed, playerController.position.z, runtimeBeforeGhost.distance, runtimeBeforeGhost.gameState);
+          if (
+            runtime.getSnapshot().gameState === GameState.RUNNING &&
+            shieldManager.collect(playerController.position.x, playerController.position.y, playerController.position.z)
+          ) {
+            runtime.activateShield(GAME_CONFIG.shieldDuration);
+            onSnapshotRef.current(createSnapshot());
+          }
         }
         handleGhostEvent(ghostController.update(
           delta,
@@ -301,6 +323,13 @@ export default function ThreeGameView({
           const collisionSnapshot = playerController.getSnapshot();
           collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
             console.log('[COLLISION] Player hit obstacle', obstacle.uuid);
+            if (runtime.consumeShield()) {
+              shieldBreakRemaining = 0.25;
+              cameraShakeRemaining = 0.25;
+              console.log('[HEALTH] Damage prevented by shield');
+              onSnapshotRef.current(createSnapshot());
+              return true;
+            }
             const damaged = runtime.takeDamage(1);
             if (!damaged) return false;
             const damagedSnapshot = runtime.getSnapshot();
@@ -334,6 +363,7 @@ export default function ThreeGameView({
         }
       }
 
+      shieldBreakRemaining = Math.max(0, shieldBreakRemaining - delta);
       const runtimeSnapshot = createSnapshot();
       hudElapsed += delta;
       if (hudElapsed >= 0.12 || runtimeSnapshot.gameState === GameState.DEAD) {
@@ -343,6 +373,11 @@ export default function ThreeGameView({
       const snapshot = playerController.getSnapshot();
       const deathProgress = deathEffectActive ? Math.min(1, deathEffectElapsed / 0.75) : 0;
       const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
+      shieldAura.position.set(playerController.position.x, playerController.position.y + 1.25, playerController.position.z);
+      shieldAura.visible = runtimeSnapshot.shieldActive || shieldBreakRemaining > 0;
+      shieldAura.scale.setScalar(1 + shieldBreakRemaining * 2);
+      (shieldAura.material as THREE.MeshBasicMaterial).opacity = runtimeSnapshot.shieldActive ? 0.16 : shieldBreakRemaining * 0.7;
+      shieldAura.rotation.y += delta * 1.2;
       ghost.visible = ghostSnapshot.state !== GhostState.HIDDEN;
       ghost.position.set(
         ghostController.position.x,
@@ -374,6 +409,7 @@ export default function ThreeGameView({
     cleanupRef.current = () => {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
       coinManager.dispose();
+      shieldManager.dispose();
       obstacleManager.dispose();
       chunkManager.dispose();
       renderer.dispose();

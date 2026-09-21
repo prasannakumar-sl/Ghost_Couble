@@ -30,6 +30,11 @@ export default function GameHUD({ snapshot }: GameHUDProps) {
       <View style={styles.coinBadge}>
         <Text style={styles.coinValue}>● {snapshot.coins}</Text>
       </View>
+      {snapshot.shieldActive ? (
+        <View style={styles.shieldBadge}>
+          <Text style={styles.shieldValue}>SHIELD {Math.ceil(snapshot.shieldRemaining)}s</Text>
+        </View>
+      ) : null}
       {snapshot.ghostChaseRemaining > 0 ? (
         <View style={styles.chaseBadge}>
           <Text style={styles.chaseLabel}>GHOST CHASE</Text>
@@ -61,6 +66,17 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 212, 92, 0.4)',
   },
   coinValue: { color: '#ffd45c', fontSize: 13, fontWeight: '800' },
+  shieldBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(10, 69, 92, 0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(72, 231, 255, 0.72)',
+  },
+  shieldValue: { color: '#8ff3ff', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
   chaseBadge: {
     alignSelf: 'center',
     flexDirection: 'row',

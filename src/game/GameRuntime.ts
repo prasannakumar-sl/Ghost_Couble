@@ -19,6 +19,8 @@ export interface GameRuntimeSnapshot {
   maxHearts: number;
   gameState: GameState;
   gameOverReason: GameOverReason | null;
+  shieldActive: boolean;
+  shieldRemaining: number;
 }
 
 export class GameRuntime {
@@ -32,6 +34,7 @@ export class GameRuntime {
   private damageCooldownRemaining = 0;
   private hitRemaining = 0;
   private ghostAttacking = false;
+  private shieldRemaining = 0;
 
   constructor(maxHearts = GAME_CONFIG.maxHearts) {
     this.maxHearts = maxHearts;
@@ -43,6 +46,10 @@ export class GameRuntime {
     const delta = Math.min(deltaTime, 0.05);
     if (this.damageCooldownRemaining > 0) {
       this.damageCooldownRemaining = Math.max(0, this.damageCooldownRemaining - delta);
+    }
+    if (this.shieldRemaining > 0) {
+      this.shieldRemaining = Math.max(0, this.shieldRemaining - delta);
+      if (this.shieldRemaining === 0) console.log('[SHIELD] Expired');
     }
     if (this.hitRemaining > 0) {
       this.hitRemaining = Math.max(0, this.hitRemaining - delta);
@@ -80,6 +87,22 @@ export class GameRuntime {
     this.damageCooldownRemaining = 0;
     this.hitRemaining = 0;
     this.ghostAttacking = false;
+    this.shieldRemaining = 0;
+  }
+
+  activateShield(duration: number) {
+    if (this.gameState !== GameState.RUNNING) return false;
+    this.shieldRemaining = duration;
+    console.log('[SHIELD] Activated');
+    return true;
+  }
+
+  consumeShield() {
+    if (this.shieldRemaining <= 0) return false;
+    this.shieldRemaining = 0;
+    console.log('[SHIELD] Obstacle blocked');
+    console.log('[SHIELD] Consumed');
+    return true;
   }
 
   beginGhostAttack() {
@@ -121,6 +144,8 @@ export class GameRuntime {
       maxHearts: this.maxHearts,
       gameState: this.gameState,
       gameOverReason: this.gameOverReason,
+      shieldActive: this.shieldRemaining > 0,
+      shieldRemaining: this.shieldRemaining,
     };
   }
 }

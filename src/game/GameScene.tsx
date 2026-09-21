@@ -21,6 +21,8 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
   ghostState: GhostState.FOLLOW,
   ghostChaseRemaining: 0,
   ghostDistanceBehind: 4.8,
+  shieldActive: false,
+  shieldRemaining: 0,
 };
 
 const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0, totalCoins: 0 };

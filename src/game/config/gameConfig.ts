@@ -8,6 +8,7 @@ export const GAME_CONFIG = {
   hudUpdateInterval: 0.12,
   coinPoolSize: 96,
   coinFrequency: 0.85,
+  shieldDuration: 9,
 } as const;
 
 export type GameConfig = typeof GAME_CONFIG;
