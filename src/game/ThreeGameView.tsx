@@ -66,6 +66,7 @@ interface ThreeGameViewProps {
   previousBestDistance: number;
   bestStatsLoaded: boolean;
   onSnapshot: (snapshot: GameSnapshot) => void;
+  onCoinsCollected: (amount: number) => void;
 }
 
 const ambientAudio = require('../../assets/audio/ghost_ambient.wav');
@@ -77,6 +78,7 @@ export default function ThreeGameView({
   previousBestDistance,
   bestStatsLoaded,
   onSnapshot,
+  onCoinsCollected,
 }: ThreeGameViewProps) {
   const playerController = useMemo(() => new PlayerController(), []);
   const swipeInput = useMemo(() => new SwipeInput(), []);
@@ -94,13 +96,15 @@ export default function ThreeGameView({
   const previousBestDistanceRef = useRef(previousBestDistance);
   const bestStatsLoadedRef = useRef(bestStatsLoaded);
   const onSnapshotRef = useRef(onSnapshot);
+  const onCoinsCollectedRef = useRef(onCoinsCollected);
 
   useEffect(() => {
     restartTokenRef.current = restartToken;
     previousBestDistanceRef.current = previousBestDistance;
     bestStatsLoadedRef.current = bestStatsLoaded;
     onSnapshotRef.current = onSnapshot;
-  }, [bestStatsLoaded, onSnapshot, previousBestDistance, restartToken]);
+    onCoinsCollectedRef.current = onCoinsCollected;
+  }, [bestStatsLoaded, onCoinsCollected, onSnapshot, previousBestDistance, restartToken]);
 
   useEffect(() => {
     void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
@@ -185,6 +189,10 @@ export default function ThreeGameView({
     let hudElapsed = 0;
     let handledRestartToken = restartTokenRef.current;
     let cameraShakeRemaining = 0;
+    let deathSequenceStarted = false;
+    let deathEffectActive = false;
+    let deathEffectElapsed = 0;
+    let gameOverDelayRemaining = 0;
 
     let hasBeatenPreviousBest = false;
     playerController.start();
@@ -212,8 +220,13 @@ export default function ThreeGameView({
         ghostAudio.playAttack();
       }
       if (event === 'ATTACK_FINISHED') {
-        runtime.finishGhostAttack();
+        deathEffectActive = true;
+        deathEffectElapsed = 0;
+        gameOverDelayRemaining = 0.75;
         playerController.die();
+        cameraShakeRemaining = 0.35;
+        console.log('[GHOST] Player caught');
+        console.log('[PLAYER] Death completed');
       }
       if (event) onSnapshotRef.current(createSnapshot());
     };
@@ -230,8 +243,13 @@ export default function ThreeGameView({
       ghostController.reset(playerController.position);
       ghostAudio.reset();
       cameraShakeRemaining = 0;
+      deathSequenceStarted = false;
+      deathEffectActive = false;
+      deathEffectElapsed = 0;
+      gameOverDelayRemaining = 0;
 
       hasBeatenPreviousBest = false;
+      console.log('[GAME] Restarting');
       obstacleManager.update();
       coinManager.update(0, elapsed);
       hudElapsed = 0;
@@ -252,6 +270,7 @@ export default function ThreeGameView({
         runtime.update(delta, playerController.config.speed);
         const runtimeBeforeGhost = runtime.getSnapshot();
         if (
+          !deathSequenceStarted &&
           bestStatsLoadedRef.current &&
           !hasBeatenPreviousBest &&
           runtimeBeforeGhost.distance > previousBestDistanceRef.current
@@ -261,15 +280,24 @@ export default function ThreeGameView({
           ghostAudio.endChase();
           ghostAudio.stopAmbient();
         }
-        if (runtimeBeforeGhost.gameState === GameState.RUNNING) playerController.recoverHit();
-        playerController.update(delta);
-        chunkManager.update(playerController.position.z);
-        obstacleManager.update();
-        coinManager.update(delta, elapsed);
-        coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
-        handleGhostEvent(ghostController.update(delta, playerController.position, playerController.config.speed));
+        if (!deathSequenceStarted) {
+          if (runtimeBeforeGhost.gameState === GameState.RUNNING) playerController.recoverHit();
+          playerController.update(delta);
+          chunkManager.update(playerController.position.z);
+          obstacleManager.update();
+          const coinsBeforeCollection = runtime.getSnapshot().coins;
+          coinManager.update(delta, elapsed);
+          coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+          const collectedCoins = runtime.getSnapshot().coins - coinsBeforeCollection;
+          if (collectedCoins > 0) onCoinsCollectedRef.current(collectedCoins);
+        }
+        handleGhostEvent(ghostController.update(
+          delta,
+          playerController.position,
+          deathSequenceStarted ? 0 : playerController.config.speed,
+        ));
 
-        if (runtime.getSnapshot().gameState !== GameState.DEAD) {
+        if (!deathSequenceStarted && runtime.getSnapshot().gameState !== GameState.DEAD) {
           const collisionSnapshot = playerController.getSnapshot();
           collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
             console.log('[COLLISION] Player hit obstacle', obstacle.uuid);
@@ -277,8 +305,15 @@ export default function ThreeGameView({
             if (!damaged) return false;
             const damagedSnapshot = runtime.getSnapshot();
             if (damagedSnapshot.hearts === 0) {
-              runtime.beginGhostAttack();
-              handleGhostEvent(ghostController.startAttack());
+              if (!deathSequenceStarted) {
+                deathSequenceStarted = true;
+                console.log('[HEALTH] Health reached 0');
+                console.log('[GAME] Entering death state');
+                console.log('[GHOST] Starting attack');
+                runtime.beginGhostAttack();
+                playerController.die();
+                handleGhostEvent(ghostController.startAttack());
+              }
             } else {
               playerController.hit();
               console.log('[GHOST] Chase started because player lost a heart');
@@ -287,6 +322,15 @@ export default function ThreeGameView({
             onSnapshotRef.current(createSnapshot());
             return true;
           });
+        }
+
+        if (deathEffectActive) {
+          deathEffectElapsed += delta;
+          gameOverDelayRemaining = Math.max(0, gameOverDelayRemaining - delta);
+          if (gameOverDelayRemaining === 0) {
+            deathEffectActive = false;
+            runtime.finishGhostAttack();
+          }
         }
       }
 
@@ -297,6 +341,7 @@ export default function ThreeGameView({
         onSnapshotRef.current(runtimeSnapshot);
       }
       const snapshot = playerController.getSnapshot();
+      const deathProgress = deathEffectActive ? Math.min(1, deathEffectElapsed / 0.75) : 0;
       const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
       ghost.visible = ghostSnapshot.state !== GhostState.HIDDEN;
       ghost.position.set(
@@ -313,6 +358,8 @@ export default function ThreeGameView({
       player.position.y += isSliding ? 0.58 : 0;
       player.position.y += snapshot.state === PlayerState.RUN ? Math.sin(elapsed * 12) * 0.045 : 0;
       player.rotation.y = Math.sin(elapsed * 2.4) * 0.025;
+      player.rotation.z = deathProgress * Math.PI * 0.5;
+      player.scale.multiplyScalar(1 - deathProgress * 0.15);
       cameraController.update(camera, cameraAnchor, delta);
       if (cameraShakeRemaining > 0) {
         cameraShakeRemaining = Math.max(0, cameraShakeRemaining - delta);

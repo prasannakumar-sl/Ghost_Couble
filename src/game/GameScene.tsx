@@ -23,7 +23,7 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
   ghostDistanceBehind: 4.8,
 };
 
-const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0 };
+const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0, totalCoins: 0 };
 
 export default function GameScene() {
   const insets = useSafeAreaInsets();
@@ -47,13 +47,30 @@ export default function GameScene() {
       bestScore: Math.max(best.bestScore, snapshot.score),
       bestDistance: Math.max(best.bestDistance, Math.floor(snapshot.distance)),
       bestCoins: Math.max(best.bestCoins, snapshot.coins),
+      totalCoins: best.totalCoins,
     };
     setBest(nextBest);
+    console.log('[GAME] Final Score:', snapshot.score);
+    console.log('[GAME] High Score:', nextBest.bestScore);
+    console.log('[COIN] Final Run Coins:', snapshot.coins);
+    console.log('[COIN] Total Coins:', best.totalCoins);
     void saveBestStats(nextBest);
   }, [best, snapshot]);
 
+  const handleCoinsCollected = (amount: number) => {
+    setBest((previousBest) => {
+      const nextTotal = previousBest.totalCoins + amount;
+      console.log('[COIN] Run Coins:', snapshot.coins, '[COIN] Total Coins:', nextTotal);
+      const nextBest = { ...previousBest, totalCoins: nextTotal };
+      void saveBestStats(nextBest);
+      return nextBest;
+    });
+  };
+
   const handleRestart = () => {
     savedGameOverRef.current = false;
+    console.log('[COIN] New run');
+    console.log('[COIN] Run Coins reset to 0');
     setSnapshot(INITIAL_SNAPSHOT);
     setRestartToken((token) => token + 1);
   };
@@ -65,6 +82,7 @@ export default function GameScene() {
         previousBestDistance={best.bestDistance}
         bestStatsLoaded={bestStatsLoaded}
         onSnapshot={setSnapshot}
+        onCoinsCollected={handleCoinsCollected}
       />
       <View pointerEvents="none" style={[styles.titleHud, { paddingTop: Math.max(18, insets.top + 4) }]}>
         <Text style={styles.title}>GHOST COUPLE</Text>

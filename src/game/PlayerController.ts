@@ -28,18 +28,19 @@ export class PlayerController {
   }
 
   moveLane(direction: -1 | 1) {
+    if (this.state === PlayerState.DEAD) return;
     const nextLane = Math.max(LANES.LEFT, Math.min(LANES.RIGHT, this.targetLane + direction)) as Lane;
     this.targetLane = nextLane;
   }
 
   jump() {
-    if (!this.started || !this.isGrounded()) return;
+    if (!this.started || this.state === PlayerState.DEAD || !this.isGrounded()) return;
     this.velocityY = this.config.jumpForce;
     this.state = PlayerState.JUMP;
   }
 
   slide() {
-    if (!this.started || !this.isGrounded() || this.state === PlayerState.SLIDE) return;
+    if (!this.started || this.state === PlayerState.DEAD || !this.isGrounded() || this.state === PlayerState.SLIDE) return;
     this.slideElapsed = 0;
     this.state = PlayerState.SLIDE;
   }

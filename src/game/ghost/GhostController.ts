@@ -55,7 +55,12 @@ export class GhostController {
       this.position.x += (player.x - this.position.x) * attackBlend;
       this.position.y += (player.y + 0.8 - this.position.y) * attackBlend;
       this.position.z += (player.z - this.position.z) * attackBlend;
-      if (this.attackElapsed >= this.config.attackDuration) {
+      const distanceToPlayer = Math.hypot(
+        this.position.x - player.x,
+        this.position.y - (player.y + 0.8),
+        this.position.z - player.z,
+      );
+      if (distanceToPlayer <= this.config.killDistance || this.attackElapsed >= this.config.attackDuration) {
         this.attackFinished = true;
         return 'ATTACK_FINISHED';
       }

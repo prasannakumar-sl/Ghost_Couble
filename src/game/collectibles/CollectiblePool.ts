@@ -14,7 +14,7 @@ export class CollectiblePool {
     for (let offset = 0; offset < this.coins.length; offset += 1) {
       const index = (this.nextIndex + offset) % this.coins.length;
       const coin = this.coins[index];
-      if (coin.isActive()) continue;
+      if (!coin.isAvailable()) continue;
       this.nextIndex = (index + 1) % this.coins.length;
       return coin;
     }

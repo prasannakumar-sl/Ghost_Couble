@@ -6,7 +6,7 @@ export const GAME_CONFIG = {
   damageCooldown: 1,
   hitDuration: 0.28,
   hudUpdateInterval: 0.12,
-  coinPoolSize: 24,
+  coinPoolSize: 96,
   coinFrequency: 0.85,
 } as const;
 

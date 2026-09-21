@@ -5,12 +5,14 @@ export interface BestStats {
   bestScore: number;
   bestDistance: number;
   bestCoins: number;
+  totalCoins: number;
 }
 
 const DEFAULT_STATS: BestStats = {
   bestScore: 0,
   bestDistance: 0,
   bestCoins: 0,
+  totalCoins: 0,
 };
 
 const STORAGE_KEY = 'ghost-couple-best-stats';
@@ -25,6 +27,7 @@ export async function loadBestStats(): Promise<BestStats> {
       bestScore: value.bestScore ?? 0,
       bestDistance: value.bestDistance ?? 0,
       bestCoins: value.bestCoins ?? 0,
+      totalCoins: value.totalCoins ?? 0,
     };
   }
 
@@ -34,6 +37,7 @@ export async function loadBestStats(): Promise<BestStats> {
     bestScore: value.bestScore ?? 0,
     bestDistance: value.bestDistance ?? 0,
     bestCoins: value.bestCoins ?? 0,
+    totalCoins: value.totalCoins ?? 0,
   };
 }
 

@@ -58,9 +58,10 @@ export class GameRuntime {
   }
 
   collectCoin() {
-    if (this.gameState === GameState.DEAD) return;
+    if (this.gameState !== GameState.RUNNING) return;
     this.currentRunCoins += 1;
     this.currentRunScore += GAME_CONFIG.scorePerCoin;
+    console.log('[COIN] Run Coins:', this.currentRunCoins);
   }
 
   takeDamage(amount = 1) {
