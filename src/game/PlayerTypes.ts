@@ -16,6 +16,13 @@ export enum PlayerState {
   DEAD = 'DEAD',
 }
 
+export enum JetpackPhase {
+  NONE = 'NONE',
+  TAKEOFF = 'TAKEOFF',
+  FLIGHT = 'FLIGHT',
+  LANDING = 'LANDING',
+}
+
 export type AnimationState = PlayerState;
 
 export interface PlayerSnapshot {
@@ -27,6 +34,7 @@ export interface PlayerSnapshot {
   animation: AnimationState;
   isGrounded: boolean;
   slideProgress: number;
+  jetpackPhase: JetpackPhase;
 }
 
 export interface PlayerConfig {

@@ -40,6 +40,11 @@ export default function GameHUD({ snapshot }: GameHUDProps) {
           <Text style={styles.magnetValue}>MAGNET {Math.ceil(snapshot.magnetRemaining)}s</Text>
         </View>
       ) : null}
+      {snapshot.jetpackActive ? (
+        <View style={styles.jetpackBadge}>
+          <Text style={styles.jetpackValue}>🚀 JETPACK {snapshot.jetpackRemaining}s</Text>
+        </View>
+      ) : null}
       {snapshot.ghostChaseRemaining > 0 ? (
         <View style={styles.chaseBadge}>
           <Text style={styles.chaseLabel}>GHOST CHASE</Text>
@@ -93,6 +98,17 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 108, 155, 0.72)',
   },
   magnetValue: { color: '#ff9ebc', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+  jetpackBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(42, 31, 102, 0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(169, 141, 255, 0.78)',
+  },
+  jetpackValue: { color: '#d7ccff', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
   chaseBadge: {
     alignSelf: 'center',
     flexDirection: 'row',

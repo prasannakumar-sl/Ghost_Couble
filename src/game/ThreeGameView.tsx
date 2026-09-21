@@ -6,13 +6,14 @@ import * as THREE from 'three';
 
 import { CameraController } from './CameraController';
 import { PlayerController } from './PlayerController';
-import { PlayerState } from './PlayerTypes';
+import { JetpackPhase, PlayerState } from './PlayerTypes';
 import { InputCommand, SwipeInput } from './SwipeInput';
 import { ChunkManager } from './ChunkManager';
 import { CollisionSystem } from './CollisionSystem';
 import { ObstacleManager } from './ObstacleManager';
 import { CoinManager } from './collectibles/CoinManager';
 import { GameRuntime, GameState } from './GameRuntime';
+import { JetpackManager } from './powerups/JetpackManager';
 import { PowerUpManager } from './powerups/PowerUpManager';
 import { ShieldManager } from './powerups/ShieldManager';
 import { GAME_CONFIG } from './config/gameConfig';
@@ -60,6 +61,7 @@ function createWorld(scene: THREE.Scene) {
 function applyCommand(controller: PlayerController, command: InputCommand) {
   if (command === 'LEFT') controller.moveLane(-1);
   if (command === 'RIGHT') controller.moveLane(1);
+  if (controller.jetpackPhase !== JetpackPhase.NONE) return;
   if (command === 'JUMP') controller.jump();
   if (command === 'SLIDE') controller.slide();
 }
@@ -159,12 +161,14 @@ export default function ThreeGameView({
     const runtime = new GameRuntime();
     const ghostController = new GhostController();
     const coinManager = new CoinManager(chunkManager, runtime, playerController.config);
+    const jetpackManager = new JetpackManager(chunkManager, runtime);
     const shieldManager = new ShieldManager(chunkManager);
     const powerUpManager = new PowerUpManager(chunkManager, runtime);
     obstacleManager.update();
     coinManager.update(0, 0);
     shieldManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, false);
     powerUpManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
+    jetpackManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
 
     const camera = new THREE.PerspectiveCamera(58, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 180);
     camera.position.set(0, 5.2, 8.5);
@@ -219,6 +223,8 @@ export default function ThreeGameView({
         ghostState: ghostSnapshot.state,
         ghostChaseRemaining: ghostSnapshot.chaseRemaining,
         ghostDistanceBehind: ghostSnapshot.distanceBehind,
+        jetpackActive: jetpackManager.isActive,
+        jetpackRemaining: jetpackManager.remainingSeconds,
       };
     };
 
@@ -258,6 +264,8 @@ export default function ThreeGameView({
       ghostAudio.reset();
       shieldManager.reset();
       powerUpManager.reset();
+      jetpackManager.reset();
+      swipeInput.setVerticalCommandsEnabled(true);
       cameraShakeRemaining = 0;
       shieldBreakRemaining = 0;
       deathSequenceStarted = false;
@@ -271,6 +279,8 @@ export default function ThreeGameView({
       coinManager.update(0, elapsed);
       shieldManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, false);
       powerUpManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
+      jetpackManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
+      coinManager.setJetpackActive(false);
       hudElapsed = 0;
       onSnapshotRef.current(createSnapshot());
     };
@@ -288,6 +298,10 @@ export default function ThreeGameView({
       if (runtime.getSnapshot().gameState !== GameState.DEAD) {
         runtime.update(delta, playerController.config.speed);
         const runtimeBeforeGhost = runtime.getSnapshot();
+        const wasJetpackActive = jetpackManager.isActive;
+        jetpackManager.tick(delta, runtimeBeforeGhost.distance);
+        if (wasJetpackActive && !jetpackManager.isActive) playerController.finishJetpack();
+        swipeInput.setVerticalCommandsEnabled(playerController.jetpackPhase === JetpackPhase.NONE);
         if (
           !deathSequenceStarted &&
           bestStatsLoadedRef.current &&
@@ -304,19 +318,41 @@ export default function ThreeGameView({
           playerController.update(delta);
           chunkManager.update(playerController.position.z);
           obstacleManager.update();
+          jetpackManager.update(
+            delta,
+            elapsed,
+            playerController.position.z,
+            runtimeBeforeGhost.distance,
+            runtimeBeforeGhost.gameState,
+            shieldManager.shield.isActive() || powerUpManager.magnet.isActive() || powerUpManager.extraHeart.isActive(),
+          );
+          const flightTransitionActive = playerController.jetpackPhase !== JetpackPhase.NONE;
+          coinManager.setJetpackActive(jetpackManager.isActive, runtimeBeforeGhost.distance);
           const coinsBeforeCollection = runtime.getSnapshot().coins;
-          coinManager.update(delta, elapsed);
+          coinManager.update(delta, elapsed, playerController.position.z, runtimeBeforeGhost.distance);
           powerUpManager.update(
             delta,
             elapsed,
             playerController.position.z,
             runtimeBeforeGhost.distance,
             runtimeBeforeGhost.gameState,
-            shieldManager.shield.isActive(),
+            shieldManager.shield.isActive() || jetpackManager.isActive || flightTransitionActive,
           );
+          if (jetpackManager.collect(
+            playerController.position.x,
+            playerController.position.y,
+            playerController.position.z,
+            runtimeBeforeGhost.distance,
+          )) {
+            playerController.startJetpack();
+            swipeInput.setVerticalCommandsEnabled(false);
+            coinManager.setJetpackActive(true, runtimeBeforeGhost.distance);
+          }
           coinManager.attract(playerController.position.x, playerController.position.y, playerController.position.z, delta);
           coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
-          powerUpManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+          if (!flightTransitionActive) {
+            powerUpManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+          }
           const collectedCoins = runtime.getSnapshot().coins - coinsBeforeCollection;
           if (collectedCoins > 0) onCoinsCollectedRef.current(collectedCoins);
           shieldManager.update(
@@ -325,9 +361,10 @@ export default function ThreeGameView({
             playerController.position.z,
             runtimeBeforeGhost.distance,
             runtimeBeforeGhost.gameState,
-            powerUpManager.magnet.isActive() || powerUpManager.extraHeart.isActive(),
+            powerUpManager.magnet.isActive() || powerUpManager.extraHeart.isActive() || flightTransitionActive,
           );
           if (
+            !flightTransitionActive &&
             runtime.getSnapshot().gameState === GameState.RUNNING &&
             shieldManager.collect(playerController.position.x, playerController.position.y, playerController.position.z)
           ) {
@@ -341,7 +378,7 @@ export default function ThreeGameView({
           deathSequenceStarted ? 0 : playerController.config.speed,
         ));
 
-        if (!deathSequenceStarted && runtime.getSnapshot().gameState !== GameState.DEAD) {
+        if (!deathSequenceStarted && runtime.getSnapshot().gameState !== GameState.DEAD && playerController.jetpackPhase === JetpackPhase.NONE) {
           const collisionSnapshot = playerController.getSnapshot();
           collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
             console.log('[COLLISION] Player hit obstacle', obstacle.uuid);
@@ -413,7 +450,7 @@ export default function ThreeGameView({
       const isSliding = snapshot.state === PlayerState.SLIDE;
       player.scale.set(1, isSliding ? 0.58 : 1, 1);
       player.position.y += isSliding ? 0.58 : 0;
-      player.position.y += snapshot.state === PlayerState.RUN ? Math.sin(elapsed * 12) * 0.045 : 0;
+      player.position.y += snapshot.state === PlayerState.RUN && snapshot.jetpackPhase === JetpackPhase.NONE ? Math.sin(elapsed * 12) * 0.045 : 0;
       player.rotation.y = Math.sin(elapsed * 2.4) * 0.025;
       player.rotation.z = deathProgress * Math.PI * 0.5;
       player.scale.multiplyScalar(1 - deathProgress * 0.15);
@@ -433,6 +470,7 @@ export default function ThreeGameView({
       coinManager.dispose();
       shieldManager.dispose();
       powerUpManager.dispose();
+      jetpackManager.dispose();
       obstacleManager.dispose();
       chunkManager.dispose();
       renderer.dispose();

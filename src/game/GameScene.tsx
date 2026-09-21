@@ -21,6 +21,8 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
   ghostState: GhostState.FOLLOW,
   ghostChaseRemaining: 0,
   ghostDistanceBehind: 4.8,
+  jetpackActive: false,
+  jetpackRemaining: 0,
   shieldActive: false,
   shieldRemaining: 0,
   magnetActive: false,

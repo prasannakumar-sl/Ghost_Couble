@@ -1,5 +1,6 @@
 import {
   DEFAULT_PLAYER_CONFIG,
+  JetpackPhase,
   LANES,
   Lane,
   PlayerConfig,
@@ -17,6 +18,9 @@ export class PlayerController {
   private state: PlayerState = PlayerState.IDLE;
   private slideElapsed = 0;
   private started = false;
+  private currentJetpackPhase = JetpackPhase.NONE;
+  private jetpackElapsed = 0;
+  private jetpackStartY = 0;
 
   constructor(config: Partial<PlayerConfig> = {}) {
     this.config = { ...DEFAULT_PLAYER_CONFIG, ...config };
@@ -34,13 +38,13 @@ export class PlayerController {
   }
 
   jump() {
-    if (!this.started || this.state === PlayerState.DEAD || !this.isGrounded()) return;
+    if (!this.started || this.state === PlayerState.DEAD || this.currentJetpackPhase !== JetpackPhase.NONE || !this.isGrounded()) return;
     this.velocityY = this.config.jumpForce;
     this.state = PlayerState.JUMP;
   }
 
   slide() {
-    if (!this.started || this.state === PlayerState.DEAD || !this.isGrounded() || this.state === PlayerState.SLIDE) return;
+    if (!this.started || this.state === PlayerState.DEAD || this.currentJetpackPhase !== JetpackPhase.NONE || !this.isGrounded() || this.state === PlayerState.SLIDE) return;
     this.slideElapsed = 0;
     this.state = PlayerState.SLIDE;
   }
@@ -61,6 +65,25 @@ export class PlayerController {
     this.velocityY = 0;
   }
 
+  startJetpack() {
+    if (!this.started || this.state === PlayerState.DEAD || this.currentJetpackPhase !== JetpackPhase.NONE) return false;
+    this.currentJetpackPhase = JetpackPhase.TAKEOFF;
+    this.jetpackElapsed = 0;
+    this.jetpackStartY = this.position.y;
+    this.velocityY = 0;
+    this.state = PlayerState.RUN;
+    return true;
+  }
+
+  finishJetpack() {
+    if (this.currentJetpackPhase === JetpackPhase.NONE || this.currentJetpackPhase === JetpackPhase.LANDING) return false;
+    this.currentJetpackPhase = JetpackPhase.LANDING;
+    this.jetpackElapsed = 0;
+    this.velocityY = 0;
+    this.state = PlayerState.RUN;
+    return true;
+  }
+
   reset() {
     this.position.x = 0;
     this.position.y = 0;
@@ -71,6 +94,9 @@ export class PlayerController {
     this.slideElapsed = 0;
     this.state = PlayerState.RUN;
     this.started = true;
+    this.currentJetpackPhase = JetpackPhase.NONE;
+    this.jetpackElapsed = 0;
+    this.jetpackStartY = 0;
   }
 
   update(deltaTime: number) {
@@ -82,7 +108,9 @@ export class PlayerController {
     this.position.x += (targetX - this.position.x) * laneBlend;
     this.position.z -= this.config.speed * delta;
 
-    if (!this.isGrounded() || this.state === PlayerState.JUMP || this.state === PlayerState.FALL) {
+    if (this.currentJetpackPhase !== JetpackPhase.NONE) {
+      this.updateJetpackHeight(delta);
+    } else if (!this.isGrounded() || this.state === PlayerState.JUMP || this.state === PlayerState.FALL) {
       this.velocityY -= this.config.gravity * delta;
       this.position.y += this.velocityY * delta;
       if (this.position.y > 0 && this.velocityY <= 0) this.state = PlayerState.FALL;
@@ -93,7 +121,7 @@ export class PlayerController {
       }
     }
 
-    if (this.state === PlayerState.SLIDE) {
+    if (this.state === PlayerState.SLIDE && this.currentJetpackPhase === JetpackPhase.NONE) {
       this.slideElapsed += delta;
       if (this.slideElapsed >= this.config.slideDuration) {
         this.slideElapsed = 0;
@@ -106,6 +134,10 @@ export class PlayerController {
     }
   }
 
+  get jetpackPhase() {
+    return this.currentJetpackPhase;
+  }
+
   getSnapshot(): PlayerSnapshot {
     return {
       lane: this.currentLane,
@@ -116,10 +148,38 @@ export class PlayerController {
       animation: this.state,
       isGrounded: this.isGrounded(),
       slideProgress: this.state === PlayerState.SLIDE ? this.slideElapsed / this.config.slideDuration : 0,
+      jetpackPhase: this.currentJetpackPhase,
     };
   }
 
   private isGrounded() {
-    return this.position.y <= 0.001 && this.state !== PlayerState.JUMP && this.state !== PlayerState.FALL;
+    return this.currentJetpackPhase === JetpackPhase.NONE && this.position.y <= 0.001 && this.state !== PlayerState.JUMP && this.state !== PlayerState.FALL;
+  }
+
+  private updateJetpackHeight(delta: number) {
+    this.jetpackElapsed += delta;
+    if (this.currentJetpackPhase === JetpackPhase.TAKEOFF) {
+      const progress = Math.min(1, this.jetpackElapsed / 0.9);
+      this.position.y = this.jetpackStartY + (4.2 - this.jetpackStartY) * (1 - Math.pow(1 - progress, 3));
+      if (progress === 1) {
+        this.currentJetpackPhase = JetpackPhase.FLIGHT;
+        this.jetpackElapsed = 0;
+      }
+      return;
+    }
+    if (this.currentJetpackPhase === JetpackPhase.FLIGHT) {
+      this.position.y = 4.2;
+      return;
+    }
+
+    const progress = Math.min(1, this.jetpackElapsed / 0.9);
+    this.position.y = 4.2 * Math.pow(1 - progress, 3);
+    if (progress === 1) {
+      this.position.y = 0;
+      this.currentJetpackPhase = JetpackPhase.NONE;
+      this.jetpackElapsed = 0;
+      this.jetpackStartY = 0;
+      this.state = PlayerState.RUN;
+    }
   }
 }

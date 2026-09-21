@@ -8,6 +8,8 @@ import { Coin, CoinPlacement } from './Coin';
 import { CollectiblePool } from './CollectiblePool';
 import { DEFAULT_PLAYER_CONFIG, LANES, PlayerConfig } from '../PlayerTypes';
 
+const AERIAL_REACTION_DISTANCE = 18;
+
 export class CoinManager {
   readonly pool: CollectiblePool;
   private readonly worldPosition = new THREE.Vector3();
@@ -18,6 +20,12 @@ export class CoinManager {
   private readonly chunkCoins = new Map<RoadChunk, Coin[]>();
   private patternIndex = 0;
   private jumpDiagnosticsLogged = false;
+  private jetpackActive = false;
+  private jetpackElapsed = 0;
+  private jetpackStartDistance = 0;
+  private nextAerialPatternElapsed = 0;
+  private nextAerialPatternDistance = 0;
+  private aerialPatternIndex = 0;
 
   constructor(chunkManager: ChunkManager, runtime: GameRuntime, playerConfig: PlayerConfig = DEFAULT_PLAYER_CONFIG) {
     this.chunkManager = chunkManager;
@@ -26,10 +34,30 @@ export class CoinManager {
     this.pool = new CollectiblePool(GAME_CONFIG.coinPoolSize);
   }
 
-  update(deltaTime: number, elapsed: number) {
-    const chunks = this.chunkManager.getActiveChunks();
-    for (const chunk of chunks) {
-      if (this.configuredPositions.get(chunk) !== chunk.position.z) this.configureChunk(chunk);
+  setJetpackActive(active: boolean, distance = 0) {
+    if (this.jetpackActive === active) return;
+    this.jetpackActive = active;
+    if (active) {
+      this.configuredPositions.clear();
+      this.chunkCoins.forEach((_, chunk) => this.releaseChunkCoins(chunk));
+      this.chunkCoins.clear();
+      this.jetpackElapsed = 0;
+      this.jetpackStartDistance = distance;
+      this.nextAerialPatternElapsed = 0;
+      this.nextAerialPatternDistance = 0;
+      this.aerialPatternIndex = 0;
+    }
+  }
+
+  update(deltaTime: number, elapsed: number, playerZ = 0, distance = 0) {
+    if (this.jetpackActive) {
+      this.jetpackElapsed += deltaTime;
+      this.prepareAerialChunks();
+      this.generateAerialPattern(playerZ, distance);
+    } else {
+      for (const chunk of this.chunkManager.getActiveChunks()) {
+        if (this.configuredPositions.get(chunk) !== chunk.position.z) this.configureChunk(chunk);
+      }
     }
 
     for (const coin of this.pool.coins) coin.update(deltaTime, elapsed);
@@ -75,6 +103,12 @@ export class CoinManager {
     this.chunkCoins.clear();
     this.patternIndex = 0;
     this.jumpDiagnosticsLogged = false;
+    this.jetpackActive = false;
+    this.jetpackElapsed = 0;
+    this.jetpackStartDistance = 0;
+    this.nextAerialPatternElapsed = 0;
+    this.nextAerialPatternDistance = 0;
+    this.aerialPatternIndex = 0;
   }
 
   dispose() {
@@ -84,7 +118,7 @@ export class CoinManager {
   }
 
   private configureChunk(chunk: RoadChunk) {
-    this.chunkCoins.get(chunk)?.forEach((coin) => this.pool.release(coin));
+    this.releaseChunkCoins(chunk);
     const placements = this.createPattern();
     const configured: Coin[] = [];
     placements.forEach((placement, index) => {
@@ -116,10 +150,61 @@ export class CoinManager {
     return [];
   }
 
-  private trail(lanes: readonly number[], count: number, height = 1.15) {
+  private prepareAerialChunks() {
+    for (const chunk of this.chunkManager.getActiveChunks()) {
+      if (this.configuredPositions.get(chunk) === chunk.position.z) continue;
+      this.releaseChunkCoins(chunk);
+      this.configuredPositions.delete(chunk);
+    }
+  }
+
+  private generateAerialPattern(playerZ: number, distance: number) {
+    const distanceSinceStart = Math.max(0, distance - this.jetpackStartDistance);
+    if (
+      this.jetpackElapsed < this.nextAerialPatternElapsed ||
+      distanceSinceStart < this.nextAerialPatternDistance
+    ) return;
+
+    const chunk = this.chunkManager.getActiveChunks().find((candidate) =>
+      this.configuredPositions.get(candidate) !== candidate.position.z &&
+      candidate.endZ <= playerZ - AERIAL_REACTION_DISTANCE,
+    );
+    if (!chunk) return;
+
+    const placements = this.aerialPattern();
+    const configured: Coin[] = [];
+    placements.forEach((placement, index) => {
+      const coin = this.pool.acquire();
+      coin.activate(placement, chunk.config.laneWidth, index * 0.75);
+      chunk.collectibleRoot.add(coin);
+      configured.push(coin);
+    });
+    this.chunkCoins.set(chunk, configured);
+    chunk.setLayout({ coins: placements });
+    this.configuredPositions.set(chunk, chunk.position.z);
+
+    const cadence = 3.6 + (this.aerialPatternIndex % 2) * 0.25;
+    this.nextAerialPatternElapsed = this.jetpackElapsed + cadence;
+    this.nextAerialPatternDistance = distanceSinceStart + Math.max(18, this.playerConfig.speed * cadence);
+  }
+
+  private aerialPattern(): CoinPlacement[] {
+    const pattern = this.aerialPatternIndex % 4;
+    this.aerialPatternIndex += 1;
+    const lanes = pattern === 0
+      ? [LANES.CENTER, LANES.CENTER, LANES.CENTER, LANES.CENTER, LANES.CENTER]
+      : pattern === 1
+        ? [LANES.CENTER, LANES.LEFT, LANES.LEFT, LANES.LEFT, LANES.LEFT]
+        : pattern === 2
+          ? [LANES.CENTER, LANES.RIGHT, LANES.RIGHT, LANES.RIGHT, LANES.RIGHT]
+          : [LANES.LEFT, LANES.CENTER, LANES.RIGHT, LANES.CENTER, LANES.LEFT];
+    return this.trail(lanes, lanes.length, 5.4, pattern === 3 ? 4 : 2.4);
+  }
+
+  private trail(lanes: readonly number[], count: number, height = 1.15, spacing = 1.8) {
     return Array.from({ length: count }, (_, index) => ({
       lane: lanes[index % lanes.length] as CoinPlacement['lane'],
-      localZ: 10 - index * 1.8,
+      localZ: 10 - index * spacing,
       height,
     }));
   }
@@ -181,6 +266,14 @@ export class CoinManager {
       const spacingIsReachable = !previous || Math.abs(placement.localZ - previous.localZ) <= spacingLimit;
       return heightIsReachable && forwardDistanceIsReachable && spacingIsReachable && jumpDuration > 0 && placement.lane === LANES.CENTER;
     });
+  }
+
+  private releaseChunkCoins(chunk: RoadChunk) {
+    this.chunkCoins.get(chunk)?.forEach((coin) => {
+      coin.removeFromParent();
+      this.pool.release(coin);
+    });
+    this.chunkCoins.delete(chunk);
   }
 
   private obstacleSide() {

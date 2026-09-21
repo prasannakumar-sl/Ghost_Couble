@@ -1,0 +1,492 @@
+diff --git a/src/game/GameSnapshot.ts b/src/game/GameSnapshot.ts
+index 4e4e54c..3ebd28c 100644
+--- a/src/game/GameSnapshot.ts
++++ b/src/game/GameSnapshot.ts
+@@ -5,4 +5,6 @@ export interface GameSnapshot extends GameRuntimeSnapshot {
+[L:5]    ghostState: GhostState;
+[L:6]    ghostChaseRemaining: number;
+[L:7]    ghostDistanceBehind: number;
+[L:8] +  jetpackActive: boolean;
+[L:9] +  jetpackRemaining: number;
+[L:10/8]  }
+diff --git a/src/game/ThreeGameView.tsx b/src/game/ThreeGameView.tsx
+index e4caff3..835ec7a 100644
+--- a/src/game/ThreeGameView.tsx
++++ b/src/game/ThreeGameView.tsx
+@@ -6,13 +6,14 @@ import * as THREE from 'three';
+[L:6]  
+[L:7]  import { CameraController } from './CameraController';
+[L:8]  import { PlayerController } from './PlayerController';
+[L:9] -import { PlayerState } from './PlayerTypes';
+[L:9] +import { JetpackPhase, PlayerState } from './PlayerTypes';
+[L:10]  import { InputCommand, SwipeInput } from './SwipeInput';
+[L:11]  import { ChunkManager } from './ChunkManager';
+[L:12]  import { CollisionSystem } from './CollisionSystem';
+[L:13]  import { ObstacleManager } from './ObstacleManager';
+[L:14]  import { CoinManager } from './collectibles/CoinManager';
+[L:15]  import { GameRuntime, GameState } from './GameRuntime';
+[L:16] +import { JetpackManager } from './powerups/JetpackManager';
+[L:17/16]  import { PowerUpManager } from './powerups/PowerUpManager';
+[L:18/17]  import { ShieldManager } from './powerups/ShieldManager';
+[L:19/18]  import { GAME_CONFIG } from './config/gameConfig';
+@@ -60,6 +61,7 @@ function createWorld(scene: THREE.Scene) {
+[L:61/60]  function applyCommand(controller: PlayerController, command: InputCommand) {
+[L:62/61]    if (command === 'LEFT') controller.moveLane(-1);
+[L:63/62]    if (command === 'RIGHT') controller.moveLane(1);
+[L:64] +  if (controller.jetpackPhase !== JetpackPhase.NONE) return;
+[L:65/63]    if (command === 'JUMP') controller.jump();
+[L:66/64]    if (command === 'SLIDE') controller.slide();
+[L:67/65]  }
+@@ -159,12 +161,14 @@ export default function ThreeGameView({
+[L:161/159]      const runtime = new GameRuntime();
+[L:162/160]      const ghostController = new GhostController();
+[L:163/161]      const coinManager = new CoinManager(chunkManager, runtime, playerController.config);
+[L:164] +    const jetpackManager = new JetpackManager(chunkManager, runtime);
+[L:165/162]      const shieldManager = new ShieldManager(chunkManager);
+[L:166/163]      const powerUpManager = new PowerUpManager(chunkManager, runtime);
+[L:167/164]      obstacleManager.update();
+[L:168/165]      coinManager.update(0, 0);
+[L:169/166]      shieldManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, false);
+[L:170/167]      powerUpManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
+[L:171] +    jetpackManager.update(0, 0, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
+[L:172/168]  
+[L:173/169]      const camera = new THREE.PerspectiveCamera(58, gl.drawingBufferWidth / gl.drawingBufferHeight, 0.1, 180);
+[L:174/170]      camera.position.set(0, 5.2, 8.5);
+@@ -219,6 +223,8 @@ export default function ThreeGameView({
+[L:223/219]          ghostState: ghostSnapshot.state,
+[L:224/220]          ghostChaseRemaining: ghostSnapshot.chaseRemaining,
+[L:225/221]          ghostDistanceBehind: ghostSnapshot.distanceBehind,
+[L:226] +        jetpackActive: jetpackManager.isActive,
+[L:227] +        jetpackRemaining: jetpackManager.remainingSeconds,
+[L:228/222]        };
+[L:229/223]      };
+[L:230/224]  
+@@ -258,6 +264,8 @@ export default function ThreeGameView({
+[L:264/258]        ghostAudio.reset();
+[L:265/259]        shieldManager.reset();
+[L:266/260]        powerUpManager.reset();
+[L:267] +      jetpackManager.reset();
+[L:268] +      swipeInput.setVerticalCommandsEnabled(true);
+[L:269/261]        cameraShakeRemaining = 0;
+[L:270/262]        shieldBreakRemaining = 0;
+[L:271/263]        deathSequenceStarted = false;
+@@ -271,6 +279,8 @@ export default function ThreeGameView({
+[L:279/271]        coinManager.update(0, elapsed);
+[L:280/272]        shieldManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, false);
+[L:281/273]        powerUpManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
+[L:282] +      jetpackManager.update(0, elapsed, playerController.position.z, 0, GameState.RUNNING, shieldManager.shield.isActive());
+[L:283] +      coinManager.setJetpackActive(false);
+[L:284/274]        hudElapsed = 0;
+[L:285/275]        onSnapshotRef.current(createSnapshot());
+[L:286/276]      };
+@@ -288,6 +298,10 @@ export default function ThreeGameView({
+[L:298/288]        if (runtime.getSnapshot().gameState !== GameState.DEAD) {
+[L:299/289]          runtime.update(delta, playerController.config.speed);
+[L:300/290]          const runtimeBeforeGhost = runtime.getSnapshot();
+[L:301] +        const wasJetpackActive = jetpackManager.isActive;
+[L:302] +        jetpackManager.tick(delta);
+[L:303] +        if (wasJetpackActive && !jetpackManager.isActive) playerController.finishJetpack();
+[L:304] +        swipeInput.setVerticalCommandsEnabled(playerController.jetpackPhase === JetpackPhase.NONE);
+[L:305/291]          if (
+[L:306/292]            !deathSequenceStarted &&
+[L:307/293]            bestStatsLoadedRef.current &&
+@@ -304,6 +318,16 @@ export default function ThreeGameView({
+[L:318/304]            playerController.update(delta);
+[L:319/305]            chunkManager.update(playerController.position.z);
+[L:320/306]            obstacleManager.update();
+[L:321] +          jetpackManager.update(
+[L:322] +            delta,
+[L:323] +            elapsed,
+[L:324] +            playerController.position.z,
+[L:325] +            runtimeBeforeGhost.distance,
+[L:326] +            runtimeBeforeGhost.gameState,
+[L:327] +            shieldManager.shield.isActive() || powerUpManager.magnet.isActive() || powerUpManager.extraHeart.isActive(),
+[L:328] +          );
+[L:329] +          const flightTransitionActive = playerController.jetpackPhase !== JetpackPhase.NONE;
+[L:330] +          coinManager.setJetpackActive(jetpackManager.isActive || flightTransitionActive);
+[L:331/307]            const coinsBeforeCollection = runtime.getSnapshot().coins;
+[L:332/308]            coinManager.update(delta, elapsed);
+[L:333/309]            powerUpManager.update(
+@@ -312,11 +336,18 @@ export default function ThreeGameView({
+[L:336/312]              playerController.position.z,
+[L:337/313]              runtimeBeforeGhost.distance,
+[L:338/314]              runtimeBeforeGhost.gameState,
+[L:315] -            shieldManager.shield.isActive(),
+[L:339] +            shieldManager.shield.isActive() || jetpackManager.isActive || flightTransitionActive,
+[L:340/316]            );
+[L:341] +          if (jetpackManager.collect(playerController.position.x, playerController.position.y, playerController.position.z)) {
+[L:342] +            playerController.startJetpack();
+[L:343] +            swipeInput.setVerticalCommandsEnabled(false);
+[L:344] +            coinManager.setJetpackActive(true);
+[L:345] +          }
+[L:346/317]            coinManager.attract(playerController.position.x, playerController.position.y, playerController.position.z, delta);
+[L:347/318]            coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+[L:319] -          powerUpManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+[L:348] +          if (!flightTransitionActive) {
+[L:349] +            powerUpManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+[L:350] +          }
+[L:351/320]            const collectedCoins = runtime.getSnapshot().coins - coinsBeforeCollection;
+[L:352/321]            if (collectedCoins > 0) onCoinsCollectedRef.current(collectedCoins);
+[L:353/322]            shieldManager.update(
+@@ -325,9 +356,10 @@ export default function ThreeGameView({
+[L:356/325]              playerController.position.z,
+[L:357/326]              runtimeBeforeGhost.distance,
+[L:358/327]              runtimeBeforeGhost.gameState,
+[L:328] -            powerUpManager.magnet.isActive() || powerUpManager.extraHeart.isActive(),
+[L:359] +            powerUpManager.magnet.isActive() || powerUpManager.extraHeart.isActive() || flightTransitionActive,
+[L:360/329]            );
+[L:361/330]            if (
+[L:362] +            !flightTransitionActive &&
+[L:363/331]              runtime.getSnapshot().gameState === GameState.RUNNING &&
+[L:364/332]              shieldManager.collect(playerController.position.x, playerController.position.y, playerController.position.z)
+[L:365/333]            ) {
+@@ -341,7 +373,7 @@ export default function ThreeGameView({
+[L:373/341]            deathSequenceStarted ? 0 : playerController.config.speed,
+[L:374/342]          ));
+[L:375/343]  
+[L:344] -        if (!deathSequenceStarted && runtime.getSnapshot().gameState !== GameState.DEAD) {
+[L:376] +        if (!deathSequenceStarted && runtime.getSnapshot().gameState !== GameState.DEAD && playerController.jetpackPhase === JetpackPhase.NONE) {
+[L:377/345]            const collisionSnapshot = playerController.getSnapshot();
+[L:378/346]            collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
+[L:379/347]              console.log('[COLLISION] Player hit obstacle', obstacle.uuid);
+@@ -413,7 +445,7 @@ export default function ThreeGameView({
+[L:445/413]        const isSliding = snapshot.state === PlayerState.SLIDE;
+[L:446/414]        player.scale.set(1, isSliding ? 0.58 : 1, 1);
+[L:447/415]        player.position.y += isSliding ? 0.58 : 0;
+[L:416] -      player.position.y += snapshot.state === PlayerState.RUN ? Math.sin(elapsed * 12) * 0.045 : 0;
+[L:448] +      player.position.y += snapshot.state === PlayerState.RUN && snapshot.jetpackPhase === JetpackPhase.NONE ? Math.sin(elapsed * 12) * 0.045 : 0;
+[L:449/417]        player.rotation.y = Math.sin(elapsed * 2.4) * 0.025;
+[L:450/418]        player.rotation.z = deathProgress * Math.PI * 0.5;
+[L:451/419]        player.scale.multiplyScalar(1 - deathProgress * 0.15);
+@@ -433,6 +465,7 @@ export default function ThreeGameView({
+[L:465/433]        coinManager.dispose();
+[L:466/434]        shieldManager.dispose();
+[L:467/435]        powerUpManager.dispose();
+[L:468] +      jetpackManager.dispose();
+[L:469/436]        obstacleManager.dispose();
+[L:470/437]        chunkManager.dispose();
+[L:471/438]        renderer.dispose();
+diff --git a/src/components/GameHUD.tsx b/src/components/GameHUD.tsx
+index 74b0aaa..4d33510 100644
+--- a/src/components/GameHUD.tsx
++++ b/src/components/GameHUD.tsx
+@@ -40,6 +40,11 @@ export default function GameHUD({ snapshot }: GameHUDProps) {
+[L:40]            <Text style={styles.magnetValue}>MAGNET {Math.ceil(snapshot.magnetRemaining)}s</Text>
+[L:41]          </View>
+[L:42]        ) : null}
+[L:43] +      {snapshot.jetpackActive ? (
+[L:44] +        <View style={styles.jetpackBadge}>
+[L:45] +          <Text style={styles.jetpackValue}>🚀 JETPACK {snapshot.jetpackRemaining}s</Text>
+[L:46] +        </View>
+[L:47] +      ) : null}
+[L:48/43]        {snapshot.ghostChaseRemaining > 0 ? (
+[L:49/44]          <View style={styles.chaseBadge}>
+[L:50/45]            <Text style={styles.chaseLabel}>GHOST CHASE</Text>
+@@ -93,6 +98,17 @@ const styles = StyleSheet.create({
+[L:98/93]      borderColor: 'rgba(255, 108, 155, 0.72)',
+[L:99/94]    },
+[L:100/95]    magnetValue: { color: '#ff9ebc', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+[L:101] +  jetpackBadge: {
+[L:102] +    alignSelf: 'flex-start',
+[L:103] +    marginTop: 6,
+[L:104] +    paddingHorizontal: 9,
+[L:105] +    paddingVertical: 4,
+[L:106] +    borderRadius: 12,
+[L:107] +    backgroundColor: 'rgba(42, 31, 102, 0.86)',
+[L:108] +    borderWidth: 1,
+[L:109] +    borderColor: 'rgba(169, 141, 255, 0.78)',
+[L:110] +  },
+[L:111] +  jetpackValue: { color: '#d7ccff', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+[L:112/96]    chaseBadge: {
+[L:113/97]      alignSelf: 'center',
+[L:114/98]      flexDirection: 'row',
+diff --git a/src/game/PlayerController.ts b/src/game/PlayerController.ts
+index 061e0ea..f32a2c3 100644
+--- a/src/game/PlayerController.ts
++++ b/src/game/PlayerController.ts
+@@ -1,5 +1,6 @@
+[L:1]  import {
+[L:2]    DEFAULT_PLAYER_CONFIG,
+[L:3] +  JetpackPhase,
+[L:4/3]    LANES,
+[L:5/4]    Lane,
+[L:6/5]    PlayerConfig,
+@@ -17,6 +18,9 @@ export class PlayerController {
+[L:18/17]    private state: PlayerState = PlayerState.IDLE;
+[L:19/18]    private slideElapsed = 0;
+[L:20/19]    private started = false;
+[L:21] +  private currentJetpackPhase = JetpackPhase.NONE;
+[L:22] +  private jetpackElapsed = 0;
+[L:23] +  private jetpackStartY = 0;
+[L:24/20]  
+[L:25/21]    constructor(config: Partial<PlayerConfig> = {}) {
+[L:26/22]      this.config = { ...DEFAULT_PLAYER_CONFIG, ...config };
+@@ -34,13 +38,13 @@ export class PlayerController {
+[L:38/34]    }
+[L:39/35]  
+[L:40/36]    jump() {
+[L:37] -    if (!this.started || this.state === PlayerState.DEAD || !this.isGrounded()) return;
+[L:41] +    if (!this.started || this.state === PlayerState.DEAD || this.currentJetpackPhase !== JetpackPhase.NONE || !this.isGrounded()) return;
+[L:42/38]      this.velocityY = this.config.jumpForce;
+[L:43/39]      this.state = PlayerState.JUMP;
+[L:44/40]    }
+[L:45/41]  
+[L:46/42]    slide() {
+[L:43] -    if (!this.started || this.state === PlayerState.DEAD || !this.isGrounded() || this.state === PlayerState.SLIDE) return;
+[L:47] +    if (!this.started || this.state === PlayerState.DEAD || this.currentJetpackPhase !== JetpackPhase.NONE || !this.isGrounded() || this.state === PlayerState.SLIDE) return;
+[L:48/44]      this.slideElapsed = 0;
+[L:49/45]      this.state = PlayerState.SLIDE;
+[L:50/46]    }
+@@ -61,6 +65,25 @@ export class PlayerController {
+[L:65/61]      this.velocityY = 0;
+[L:66/62]    }
+[L:67/63]  
+[L:68] +  startJetpack() {
+[L:69] +    if (!this.started || this.state === PlayerState.DEAD || this.currentJetpackPhase !== JetpackPhase.NONE) return false;
+[L:70] +    this.currentJetpackPhase = JetpackPhase.TAKEOFF;
+[L:71] +    this.jetpackElapsed = 0;
+[L:72] +    this.jetpackStartY = this.position.y;
+[L:73] +    this.velocityY = 0;
+[L:74] +    this.state = PlayerState.RUN;
+[L:75] +    return true;
+[L:76] +  }
+[L:77] +
+[L:78] +  finishJetpack() {
+[L:79] +    if (this.currentJetpackPhase === JetpackPhase.NONE || this.currentJetpackPhase === JetpackPhase.LANDING) return false;
+[L:80] +    this.currentJetpackPhase = JetpackPhase.LANDING;
+[L:81] +    this.jetpackElapsed = 0;
+[L:82] +    this.velocityY = 0;
+[L:83] +    this.state = PlayerState.RUN;
+[L:84] +    return true;
+[L:85] +  }
+[L:86] +
+[L:87/64]    reset() {
+[L:88/65]      this.position.x = 0;
+[L:89/66]      this.position.y = 0;
+@@ -71,6 +94,9 @@ export class PlayerController {
+[L:94/71]      this.slideElapsed = 0;
+[L:95/72]      this.state = PlayerState.RUN;
+[L:96/73]      this.started = true;
+[L:97] +    this.currentJetpackPhase = JetpackPhase.NONE;
+[L:98] +    this.jetpackElapsed = 0;
+[L:99] +    this.jetpackStartY = 0;
+[L:100/74]    }
+[L:101/75]  
+[L:102/76]    update(deltaTime: number) {
+@@ -82,7 +108,9 @@ export class PlayerController {
+[L:108/82]      this.position.x += (targetX - this.position.x) * laneBlend;
+[L:109/83]      this.position.z -= this.config.speed * delta;
+[L:110/84]  
+[L:85] -    if (!this.isGrounded() || this.state === PlayerState.JUMP || this.state === PlayerState.FALL) {
+[L:111] +    if (this.currentJetpackPhase !== JetpackPhase.NONE) {
+[L:112] +      this.updateJetpackHeight(delta);
+[L:113] +    } else if (!this.isGrounded() || this.state === PlayerState.JUMP || this.state === PlayerState.FALL) {
+[L:114/86]        this.velocityY -= this.config.gravity * delta;
+[L:115/87]        this.position.y += this.velocityY * delta;
+[L:116/88]        if (this.position.y > 0 && this.velocityY <= 0) this.state = PlayerState.FALL;
+@@ -93,7 +121,7 @@ export class PlayerController {
+[L:121/93]        }
+[L:122/94]      }
+[L:123/95]  
+[L:96] -    if (this.state === PlayerState.SLIDE) {
+[L:124] +    if (this.state === PlayerState.SLIDE && this.currentJetpackPhase === JetpackPhase.NONE) {
+[L:125/97]        this.slideElapsed += delta;
+[L:126/98]        if (this.slideElapsed >= this.config.slideDuration) {
+[L:127/99]          this.slideElapsed = 0;
+@@ -106,6 +134,10 @@ export class PlayerController {
+[L:134/106]      }
+[L:135/107]    }
+[L:136/108]  
+[L:137] +  get jetpackPhase() {
+[L:138] +    return this.currentJetpackPhase;
+[L:139] +  }
+[L:140] +
+[L:141/109]    getSnapshot(): PlayerSnapshot {
+[L:142/110]      return {
+[L:143/111]        lane: this.currentLane,
+@@ -116,10 +148,38 @@ export class PlayerController {
+[L:148/116]        animation: this.state,
+[L:149/117]        isGrounded: this.isGrounded(),
+[L:150/118]        slideProgress: this.state === PlayerState.SLIDE ? this.slideElapsed / this.config.slideDuration : 0,
+[L:151] +      jetpackPhase: this.currentJetpackPhase,
+[L:152/119]      };
+[L:153/120]    }
+[L:154/121]  
+[L:155/122]    private isGrounded() {
+[L:123] -    return this.position.y <= 0.001 && this.state !== PlayerState.JUMP && this.state !== PlayerState.FALL;
+[L:156] +    return this.currentJetpackPhase === JetpackPhase.NONE && this.position.y <= 0.001 && this.state !== PlayerState.JUMP && this.state !== PlayerState.FALL;
+[L:157] +  }
+[L:158] +
+[L:159] +  private updateJetpackHeight(delta: number) {
+[L:160] +    this.jetpackElapsed += delta;
+[L:161] +    if (this.currentJetpackPhase === JetpackPhase.TAKEOFF) {
+[L:162] +      const progress = Math.min(1, this.jetpackElapsed / 0.9);
+[L:163] +      this.position.y = this.jetpackStartY + (4.2 - this.jetpackStartY) * (1 - Math.pow(1 - progress, 3));
+[L:164] +      if (progress === 1) {
+[L:165] +        this.currentJetpackPhase = JetpackPhase.FLIGHT;
+[L:166] +        this.jetpackElapsed = 0;
+[L:167] +      }
+[L:168] +      return;
+[L:169] +    }
+[L:170] +    if (this.currentJetpackPhase === JetpackPhase.FLIGHT) {
+[L:171] +      this.position.y = 4.2;
+[L:172] +      return;
+[L:173] +    }
+[L:174] +
+[L:175] +    const progress = Math.min(1, this.jetpackElapsed / 0.9);
+[L:176] +    this.position.y = 4.2 * Math.pow(1 - progress, 3);
+[L:177] +    if (progress === 1) {
+[L:178] +      this.position.y = 0;
+[L:179] +      this.currentJetpackPhase = JetpackPhase.NONE;
+[L:180] +      this.jetpackElapsed = 0;
+[L:181] +      this.jetpackStartY = 0;
+[L:182] +      this.state = PlayerState.RUN;
+[L:183] +    }
+[L:184/124]    }
+[L:185/125]  }
+diff --git a/.env b/.env
+index adff95c..78febf2 100644
+--- a/.env
++++ b/.env
+@@ -1,2 +1,2 @@
+[L:1]  # https://www.builder.io/c/docs/using-your-api-key
+[L:2] -PUBLIC_BUILDER_KEY=0661180860f24655befe6a8a70e81549
+[L:2] +PUBLIC_BUILDER_KEY=82efd3aab8624e9d93764ee45cbc2bed
+diff --git a/src/game/SwipeInput.ts b/src/game/SwipeInput.ts
+index cab90af..b9766a3 100644
+--- a/src/game/SwipeInput.ts
++++ b/src/game/SwipeInput.ts
+@@ -11,6 +11,7 @@ export class SwipeInput {
+[L:11]    private readonly threshold: number;
+[L:12]    private start: Point | null = null;
+[L:13]    private consumed = false;
+[L:14] +  private verticalCommandsEnabled = true;
+[L:15/14]  
+[L:16/15]    constructor(threshold = 42) {
+[L:17/16]      this.threshold = threshold;
+@@ -23,6 +24,10 @@ export class SwipeInput {
+[L:24/23]  
+[L:25/24]    onMove(_event: GestureResponderEvent, _gesture: PanResponderGestureState) {}
+[L:26/25]  
+[L:27] +  setVerticalCommandsEnabled(enabled: boolean) {
+[L:28] +    this.verticalCommandsEnabled = enabled;
+[L:29] +  }
+[L:30] +
+[L:31/26]    onRelease(event: GestureResponderEvent): InputCommand | null {
+[L:32/27]      if (!this.start || this.consumed) return null;
+[L:33/28]      const dx = event.nativeEvent.pageX - this.start.x;
+@@ -32,6 +37,7 @@ export class SwipeInput {
+[L:37/32]      if (Math.max(Math.abs(dx), Math.abs(dy)) < this.threshold) return null;
+[L:38/33]      this.consumed = true;
+[L:39/34]      if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'RIGHT' : 'LEFT';
+[L:40] +    if (!this.verticalCommandsEnabled) return null;
+[L:41/35]      return dy > 0 ? 'SLIDE' : 'JUMP';
+[L:42/36]    }
+[L:43/37]  }
+diff --git a/src/game/PlayerTypes.ts b/src/game/PlayerTypes.ts
+index c8624cb..bea41ac 100644
+--- a/src/game/PlayerTypes.ts
++++ b/src/game/PlayerTypes.ts
+@@ -16,6 +16,13 @@ export enum PlayerState {
+[L:16]    DEAD = 'DEAD',
+[L:17]  }
+[L:18]  
+[L:19] +export enum JetpackPhase {
+[L:20] +  NONE = 'NONE',
+[L:21] +  TAKEOFF = 'TAKEOFF',
+[L:22] +  FLIGHT = 'FLIGHT',
+[L:23] +  LANDING = 'LANDING',
+[L:24] +}
+[L:25] +
+[L:26/19]  export type AnimationState = PlayerState;
+[L:27/20]  
+[L:28/21]  export interface PlayerSnapshot {
+@@ -27,6 +34,7 @@ export interface PlayerSnapshot {
+[L:34/27]    animation: AnimationState;
+[L:35/28]    isGrounded: boolean;
+[L:36/29]    slideProgress: number;
+[L:37] +  jetpackPhase: JetpackPhase;
+[L:38/30]  }
+[L:39/31]  
+[L:40/32]  export interface PlayerConfig {
+diff --git a/src/game/collectibles/CoinManager.ts b/src/game/collectibles/CoinManager.ts
+index d33bab8..6a0441e 100644
+--- a/src/game/collectibles/CoinManager.ts
++++ b/src/game/collectibles/CoinManager.ts
+@@ -18,6 +18,7 @@ export class CoinManager {
+[L:18]    private readonly chunkCoins = new Map<RoadChunk, Coin[]>();
+[L:19]    private patternIndex = 0;
+[L:20]    private jumpDiagnosticsLogged = false;
+[L:21] +  private jetpackActive = false;
+[L:22/21]  
+[L:23/22]    constructor(chunkManager: ChunkManager, runtime: GameRuntime, playerConfig: PlayerConfig = DEFAULT_PLAYER_CONFIG) {
+[L:24/23]      this.chunkManager = chunkManager;
+@@ -26,6 +27,17 @@ export class CoinManager {
+[L:27/26]      this.pool = new CollectiblePool(GAME_CONFIG.coinPoolSize);
+[L:28/27]    }
+[L:29/28]  
+[L:30] +  setJetpackActive(active: boolean) {
+[L:31] +    if (this.jetpackActive === active) return;
+[L:32] +    this.jetpackActive = active;
+[L:33] +    this.configuredPositions.clear();
+[L:34] +    this.chunkCoins.forEach((coins) => coins.forEach((coin) => {
+[L:35] +      coin.removeFromParent();
+[L:36] +      this.pool.release(coin);
+[L:37] +    }));
+[L:38] +    this.chunkCoins.clear();
+[L:39] +  }
+[L:40] +
+[L:41/29]    update(deltaTime: number, elapsed: number) {
+[L:42/30]      const chunks = this.chunkManager.getActiveChunks();
+[L:43/31]      for (const chunk of chunks) {
+@@ -75,6 +87,7 @@ export class CoinManager {
+[L:87/75]      this.chunkCoins.clear();
+[L:88/76]      this.patternIndex = 0;
+[L:89/77]      this.jumpDiagnosticsLogged = false;
+[L:90] +    this.jetpackActive = false;
+[L:91/78]    }
+[L:92/79]  
+[L:93/80]    dispose() {
+@@ -100,6 +113,8 @@ export class CoinManager {
+[L:113/100]    }
+[L:114/101]  
+[L:115/102]    private createPattern(): CoinPlacement[] {
+[L:116] +    if (this.jetpackActive) return this.aerialPattern();
+[L:117] +
+[L:118/103]      const pattern = this.patternIndex % 20;
+[L:119/104]      this.patternIndex += 1;
+[L:120/105]  
+@@ -116,6 +131,19 @@ export class CoinManager {
+[L:131/116]      return [];
+[L:132/117]    }
+[L:133/118]  
+[L:134] +  private aerialPattern(): CoinPlacement[] {
+[L:135] +    const pattern = this.patternIndex % 4;
+[L:136] +    this.patternIndex += 1;
+[L:137] +    const lanes = pattern === 0
+[L:138] +      ? [LANES.CENTER, LANES.CENTER, LANES.CENTER, LANES.CENTER]
+[L:139] +      : pattern === 1
+[L:140] +        ? [LANES.LEFT, LANES.CENTER, LANES.RIGHT, LANES.CENTER, LANES.LEFT]
+[L:141] +        : pattern === 2
+[L:142] +          ? [LANES.RIGHT, LANES.RIGHT, LANES.CENTER, LANES.LEFT, LANES.LEFT]
+[L:143] +          : [LANES.LEFT, LANES.LEFT, LANES.CENTER, LANES.RIGHT, LANES.RIGHT];
+[L:144] +    return this.trail(lanes, lanes.length, 5.4);
+[L:145] +  }
+[L:146] +
+[L:147/119]    private trail(lanes: readonly number[], count: number, height = 1.15) {
+[L:148/120]      return Array.from({ length: count }, (_, index) => ({
+[L:149/121]        lane: lanes[index % lanes.length] as CoinPlacement['lane'],
+[L:150/122] 
+diff --git a/src/game/GameScene.tsx b/src/game/GameScene.tsx
+index 632668a..0e97d0b 100644
+--- a/src/game/GameScene.tsx
++++ b/src/game/GameScene.tsx
+@@ -21,6 +21,8 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
+[L:21]    ghostState: GhostState.FOLLOW,
+[L:22]    ghostChaseRemaining: 0,
+[L:23]    ghostDistanceBehind: 4.8,
+[L:24] +  jetpackActive: false,
+[L:25] +  jetpackRemaining: 0,
+[L:26/24]    shieldActive: false,
+[L:27/25]    shieldRemaining: 0,
+[L:28/26]    magnetActive: false,

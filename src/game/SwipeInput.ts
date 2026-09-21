@@ -11,6 +11,7 @@ export class SwipeInput {
   private readonly threshold: number;
   private start: Point | null = null;
   private consumed = false;
+  private verticalCommandsEnabled = true;
 
   constructor(threshold = 42) {
     this.threshold = threshold;
@@ -23,6 +24,10 @@ export class SwipeInput {
 
   onMove(_event: GestureResponderEvent, _gesture: PanResponderGestureState) {}
 
+  setVerticalCommandsEnabled(enabled: boolean) {
+    this.verticalCommandsEnabled = enabled;
+  }
+
   onRelease(event: GestureResponderEvent): InputCommand | null {
     if (!this.start || this.consumed) return null;
     const dx = event.nativeEvent.pageX - this.start.x;
@@ -32,6 +37,7 @@ export class SwipeInput {
     if (Math.max(Math.abs(dx), Math.abs(dy)) < this.threshold) return null;
     this.consumed = true;
     if (Math.abs(dx) > Math.abs(dy)) return dx > 0 ? 'RIGHT' : 'LEFT';
+    if (!this.verticalCommandsEnabled) return null;
     return dy > 0 ? 'SLIDE' : 'JUMP';
   }
 }
