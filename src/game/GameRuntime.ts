@@ -94,13 +94,15 @@ export class GameRuntime {
     this.ghostAttacking = false;
     this.gameState = GameState.DEAD;
     this.gameOverReason = GameOverReason.GHOST_CAUGHT;
+    console.log('[GAME] GAME OVER');
     return true;
   }
 
   private applyDamage(amount: number) {
+    const previousHealth = this.currentRunHearts;
     this.currentRunHearts = Math.max(0, this.currentRunHearts - amount);
-    console.log('[HEALTH] Damage received:', amount, 'Health:', this.currentRunHearts);
-    console.log('[HEALTH] Current health:', this.currentRunHearts);
+    console.log('[HEALTH] Previous:', previousHealth);
+    console.log('[HEALTH] New:', this.currentRunHearts);
     this.damageCooldownRemaining = GAME_CONFIG.damageCooldown;
     this.hitRemaining = GAME_CONFIG.hitDuration;
     this.gameState = GameState.HIT;
