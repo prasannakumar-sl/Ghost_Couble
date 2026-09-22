@@ -5,6 +5,8 @@ import {
   type AudioSource,
 } from 'expo-audio';
 
+import { loadAudioSettings, saveAudioSettings, type AudioSettings } from './SoundSettingsStore';
+
 export type MusicTrack = 'HOME' | 'GAMEPLAY' | 'GAME_OVER';
 export type SfxName =
   | 'button'
@@ -18,6 +20,7 @@ export type SfxName =
   | 'ghost_follow'
   | 'ghost_chase'
   | 'ghost_attack';
+type GameplaySfxName = Exclude<SfxName, 'button'>;
 
 type SfxOptions = {
   loop?: boolean;
@@ -49,19 +52,68 @@ const SFX_SOURCES: Record<SfxName, AudioSource> = {
 class AudioManager {
   private musicPlayer: AudioPlayer | null = null;
   private currentMusic: MusicTrack | null = null;
-  private readonly sfxPlayers = new Map<SfxName, AudioPlayer>();
+  private requestedMusic: MusicTrack | null = null;
+  private readonly gameplaySfxPlayers = new Map<GameplaySfxName, AudioPlayer>();
+  private readonly uiSfxPlayers = new Map<'button', AudioPlayer>();
   private ghostState: GhostAudioState = null;
   private musicVolume = 0.4;
   private sfxVolume = 0.7;
   private initialized = false;
+  private audioSettingsLoaded = false;
+  private readonly pendingAudioSettings = new Set<keyof AudioSettings>();
+  private audioSettingsSave = Promise.resolve();
+  private musicEnabled = true;
+  private sfxEnabled = true;
+  private uiSoundsEnabled = true;
 
   async initialize() {
     if (this.initialized) return;
+    const storedSettings = await loadAudioSettings();
+    if (!this.pendingAudioSettings.has('musicEnabled')) this.musicEnabled = storedSettings.musicEnabled;
+    if (!this.pendingAudioSettings.has('sfxEnabled')) this.sfxEnabled = storedSettings.sfxEnabled;
+    if (!this.pendingAudioSettings.has('uiSoundsEnabled')) this.uiSoundsEnabled = storedSettings.uiSoundsEnabled;
+    this.pendingAudioSettings.clear();
+    this.audioSettingsLoaded = true;
     this.initialized = true;
     await setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
   }
 
+  getAudioSettings(): AudioSettings {
+    return {
+      musicEnabled: this.musicEnabled,
+      sfxEnabled: this.sfxEnabled,
+      uiSoundsEnabled: this.uiSoundsEnabled,
+    };
+  }
+
+  setMusicEnabled(enabled: boolean) {
+    this.pendingAudioSettings.add('musicEnabled');
+    this.musicEnabled = enabled;
+    void this.persistAudioSettings();
+    if (enabled) {
+      if (this.requestedMusic) this.playMusic(this.requestedMusic);
+    } else {
+      this.stopMusic();
+    }
+  }
+
+  setSFXEnabled(enabled: boolean) {
+    this.pendingAudioSettings.add('sfxEnabled');
+    this.sfxEnabled = enabled;
+    void this.persistAudioSettings();
+    if (!enabled) this.stopGameplaySFX();
+  }
+
+  setUISoundsEnabled(enabled: boolean) {
+    this.pendingAudioSettings.add('uiSoundsEnabled');
+    this.uiSoundsEnabled = enabled;
+    void this.persistAudioSettings();
+    if (!enabled) this.stopUISFX();
+  }
+
   playMusic(track: MusicTrack) {
+    this.requestedMusic = track;
+    if (!this.audioSettingsLoaded || !this.musicEnabled) return;
     if (this.currentMusic === track && this.musicPlayer) {
       this.musicPlayer.play();
       return;
@@ -90,14 +142,30 @@ class AudioManager {
   }
 
   resumeMusic() {
+    if (!this.audioSettingsLoaded || !this.musicEnabled) return;
     this.musicPlayer?.play();
   }
 
   playSFX(name: SfxName, options: SfxOptions = {}) {
-    let player = this.sfxPlayers.get(name);
+    if (name === 'button') {
+      if (!this.audioSettingsLoaded || !this.uiSoundsEnabled) return;
+      let player = this.uiSfxPlayers.get(name);
+      if (!player) {
+        player = createAudioPlayer(SFX_SOURCES[name]);
+        this.uiSfxPlayers.set(name, player);
+      }
+      player.loop = options.loop ?? false;
+      player.volume = options.volume ?? this.sfxVolume;
+      player.seekTo(0);
+      player.play();
+      return;
+    }
+
+    if (!this.audioSettingsLoaded || !this.sfxEnabled) return;
+    let player = this.gameplaySfxPlayers.get(name);
     if (!player) {
       player = createAudioPlayer(SFX_SOURCES[name]);
-      this.sfxPlayers.set(name, player);
+      this.gameplaySfxPlayers.set(name, player);
     }
 
     player.loop = options.loop ?? false;
@@ -107,19 +175,31 @@ class AudioManager {
   }
 
   stopSFX(name: SfxName) {
-    const player = this.sfxPlayers.get(name);
+    const player = name === 'button' ? this.uiSfxPlayers.get(name) : this.gameplaySfxPlayers.get(name);
     if (!player) return;
     player.pause();
     player.seekTo(0);
   }
 
-  stopAll() {
-    this.stopMusic();
-    for (const player of this.sfxPlayers.values()) {
+  stopGameplaySFX() {
+    for (const player of this.gameplaySfxPlayers.values()) {
       player.pause();
       player.seekTo(0);
     }
     this.ghostState = null;
+  }
+
+  stopUISFX() {
+    for (const player of this.uiSfxPlayers.values()) {
+      player.pause();
+      player.seekTo(0);
+    }
+  }
+
+  stopAll() {
+    this.stopMusic();
+    this.stopGameplaySFX();
+    this.stopUISFX();
   }
 
   setMusicVolume(volume: number) {
@@ -129,24 +209,26 @@ class AudioManager {
 
   setSFXVolume(volume: number) {
     this.sfxVolume = Math.max(0, Math.min(1, volume));
-    for (const player of this.sfxPlayers.values()) player.volume = this.sfxVolume;
+    for (const player of this.gameplaySfxPlayers.values()) player.volume = this.sfxVolume;
+    for (const player of this.uiSfxPlayers.values()) player.volume = this.sfxVolume;
   }
 
   startGhostFollow() {
-    if (this.ghostState === 'FOLLOW') return;
+    if (!this.audioSettingsLoaded || !this.sfxEnabled || this.ghostState === 'FOLLOW') return;
     this.stopSFX('ghost_chase');
     this.playSFX('ghost_follow', { loop: true, volume: 0.3 });
     this.ghostState = 'FOLLOW';
   }
 
   startGhostChase() {
-    if (this.ghostState === 'CHASE') return;
+    if (!this.audioSettingsLoaded || !this.sfxEnabled || this.ghostState === 'CHASE') return;
     this.stopSFX('ghost_follow');
     this.playSFX('ghost_chase', { loop: true, volume: 0.5 });
     this.ghostState = 'CHASE';
   }
 
   playGhostAttack() {
+    if (!this.audioSettingsLoaded || !this.sfxEnabled) return;
     this.stopSFX('ghost_follow');
     this.stopSFX('ghost_chase');
     this.playSFX('ghost_attack', { volume: 0.7 });
@@ -155,9 +237,18 @@ class AudioManager {
 
   cleanup() {
     this.stopAll();
-    for (const player of this.sfxPlayers.values()) player.remove();
-    this.sfxPlayers.clear();
+    for (const player of this.gameplaySfxPlayers.values()) player.remove();
+    for (const player of this.uiSfxPlayers.values()) player.remove();
+    this.gameplaySfxPlayers.clear();
+    this.uiSfxPlayers.clear();
+    this.audioSettingsLoaded = false;
     this.initialized = false;
+  }
+
+  private persistAudioSettings() {
+    const settings = this.getAudioSettings();
+    this.audioSettingsSave = this.audioSettingsSave.then(() => saveAudioSettings(settings));
+    return this.audioSettingsSave;
   }
 }
 

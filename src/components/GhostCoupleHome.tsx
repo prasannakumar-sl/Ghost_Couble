@@ -8,6 +8,7 @@ import {
     ScrollView,
     StyleSheet,
     Platform,
+    Switch,
     Text,
     useWindowDimensions,
     View,
@@ -48,6 +49,10 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
   const isDesktopWeb = Platform.OS === "web" && width >= 1024;
   const [best, setBest] = useState(INITIAL_STATS);
   const [howToPlayVisible, setHowToPlayVisible] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [musicEnabled, setMusicEnabled] = useState(() => audioManager.getAudioSettings().musicEnabled);
+  const [sfxEnabled, setSfxEnabled] = useState(() => audioManager.getAudioSettings().sfxEnabled);
+  const [uiSoundsEnabled, setUiSoundsEnabled] = useState(() => audioManager.getAudioSettings().uiSoundsEnabled);
   const [fogProgress] = useState(() => new Animated.Value(0));
   const [titleGlow] = useState(() => new Animated.Value(0.68));
   const [buttonPulse] = useState(() => new Animated.Value(1));
@@ -63,7 +68,12 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
   useEffect(() => {
     let active = true;
     void audioManager.initialize().then(() => {
-      if (active) audioManager.playMusic("HOME");
+      if (!active) return;
+      const settings = audioManager.getAudioSettings();
+      setMusicEnabled(settings.musicEnabled);
+      setSfxEnabled(settings.sfxEnabled);
+      setUiSoundsEnabled(settings.uiSoundsEnabled);
+      audioManager.playMusic("HOME");
     });
     return () => {
       active = false;
@@ -477,20 +487,79 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
             </Pressable>
           </Animated.View>
 
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => setHowToPlayVisible(true)}
-            style={({ pressed }) => [
-              styles.howButton,
-              pressed && styles.secondaryPressed,
-            ]}
-          >
-            <Text style={styles.howButtonText}>HOW TO PLAY</Text>
-            <Text style={styles.howButtonArrow}>↗</Text>
-          </Pressable>
+          <View style={styles.secondaryActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setHowToPlayVisible(true)}
+              style={({ pressed }) => [
+                styles.howButton,
+                pressed && styles.secondaryPressed,
+              ]}
+            >
+              <Text style={styles.howButtonText}>HOW TO PLAY</Text>
+              <Text style={styles.howButtonArrow}>↗</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open settings"
+              onPress={() => setSettingsVisible(true)}
+              style={({ pressed }) => [
+                styles.howButton,
+                pressed && styles.secondaryPressed,
+              ]}
+            >
+              <Text style={styles.howButtonText}>SETTINGS</Text>
+              <Text style={styles.howButtonArrow}>⚙</Text>
+            </Pressable>
+          </View>
           <Text style={styles.footer}>THE NIGHT IS WAITING</Text>
         </View>
       </View>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={settingsVisible}
+        onRequestClose={() => setSettingsVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalEyebrow}>GAME PREFERENCES</Text>
+            <Text style={styles.modalTitle}>AUDIO SETTINGS</Text>
+            <AudioSettingRow
+              label="🎵 MUSIC"
+              enabled={musicEnabled}
+              onValueChange={(enabled) => {
+                setMusicEnabled(enabled);
+                audioManager.setMusicEnabled(enabled);
+              }}
+            />
+            <AudioSettingRow
+              label="🔊 SOUND EFFECTS"
+              enabled={sfxEnabled}
+              onValueChange={(enabled) => {
+                setSfxEnabled(enabled);
+                audioManager.setSFXEnabled(enabled);
+              }}
+            />
+            <AudioSettingRow
+              label="🔔 UI SOUNDS"
+              enabled={uiSoundsEnabled}
+              onValueChange={(enabled) => {
+                setUiSoundsEnabled(enabled);
+                audioManager.setUISoundsEnabled(enabled);
+              }}
+            />
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setSettingsVisible(false)}
+              style={styles.closeButton}
+            >
+              <Text style={styles.closeButtonText}>BACK TO MENU</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         animationType="fade"
@@ -521,6 +590,32 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
           </View>
         </View>
       </Modal>
+    </View>
+  );
+}
+
+function AudioSettingRow({
+  label,
+  enabled,
+  onValueChange,
+}: {
+  label: string;
+  enabled: boolean;
+  onValueChange: (enabled: boolean) => void;
+}) {
+  return (
+    <View style={styles.settingRow}>
+      <View style={styles.settingCopy}>
+        <Text style={styles.settingLabel}>{label}</Text>
+        <Text style={styles.settingValue}>{enabled ? "ON" : "OFF"}</Text>
+      </View>
+      <Switch
+        accessibilityLabel={label}
+        value={enabled}
+        onValueChange={onValueChange}
+        trackColor={{ false: "#303d64", true: "#42d8e8" }}
+        thumbColor={enabled ? "#effaff" : "#8b91b8"}
+      />
     </View>
   );
 }
@@ -1265,6 +1360,12 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 2.2,
   },
+  secondaryActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
   howButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1320,6 +1421,31 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 2.5,
     marginTop: 6,
+  },
+  settingRow: {
+    minHeight: 68,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 24,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: "#191f40",
+    borderWidth: 1,
+    borderColor: "#303d64",
+  },
+  settingCopy: { gap: 4 },
+  settingLabel: {
+    color: "#effaff",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 1.8,
+  },
+  settingValue: {
+    color: "#71e8ee",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.2,
   },
   controlList: { gap: 11, paddingVertical: 24 },
   controlRow: {
