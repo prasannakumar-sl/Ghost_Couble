@@ -426,6 +426,13 @@ export default function ThreeGameView({
         }
       }
 
+      if (runtime.getSnapshot().gameState === GameState.DEAD) {
+        onSnapshotRef.current(createSnapshot());
+        if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+        return;
+      }
+
       shieldBreakRemaining = Math.max(0, shieldBreakRemaining - delta);
       const runtimeSnapshot = createSnapshot();
       hudElapsed += delta;

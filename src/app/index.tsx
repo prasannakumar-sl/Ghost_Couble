@@ -6,7 +6,7 @@ import GameScene from '@/game/GameScene';
 export default function HomeScreen() {
   const [gameStarted, setGameStarted] = useState(false);
 
-  if (gameStarted) return <GameScene />;
+  if (gameStarted) return <GameScene onHome={() => setGameStarted(false)} />;
 
   return <GhostCoupleHome onStartGame={() => setGameStarted(true)} />;
 }

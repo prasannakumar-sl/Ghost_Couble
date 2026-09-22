@@ -9,9 +9,10 @@ interface GameOverScreenProps {
   snapshot: GameSnapshot;
   best: BestStats;
   onRestart: () => void;
+  onHome: () => void;
 }
 
-export default function GameOverScreen({ snapshot, best, onRestart }: GameOverScreenProps) {
+export default function GameOverScreen({ snapshot, best, onRestart, onHome }: GameOverScreenProps) {
   return (
     <View style={styles.backdrop}>
       <View style={styles.card}>
@@ -30,6 +31,9 @@ export default function GameOverScreen({ snapshot, best, onRestart }: GameOverSc
         <Pressable accessibilityRole="button" onPress={onRestart} style={styles.button}>
           <Text style={styles.buttonText}>RESTART</Text>
         </Pressable>
+        <Pressable accessibilityRole="button" onPress={onHome} style={styles.homeButton}>
+          <Text style={styles.buttonText}>HOME</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -45,5 +49,6 @@ const styles = StyleSheet.create({
   statValue: { color: '#e8fbff', fontWeight: '800' },
   best: { color: '#ffd45c', fontSize: 12, letterSpacing: 1, marginTop: 5 },
   button: { marginTop: 24, minWidth: 150, alignItems: 'center', paddingVertical: 12, borderRadius: 22, backgroundColor: '#42d8e8' },
+  homeButton: { minWidth: 150, marginTop: 10, alignItems: 'center', paddingVertical: 12, borderRadius: 22, backgroundColor: '#a98dff' },
   buttonText: { color: '#071322', fontSize: 13, fontWeight: '900', letterSpacing: 2 },
 });

@@ -32,7 +32,11 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
 
 const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0, totalCoins: 0 };
 
-export default function GameScene() {
+interface GameSceneProps {
+  onHome: () => void;
+}
+
+export default function GameScene({ onHome }: GameSceneProps) {
   const insets = useSafeAreaInsets();
   const maxHealth: number = GAME_CONFIG.maxHearts;
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
@@ -106,7 +110,7 @@ export default function GameScene() {
       </View>
       <GameHUD snapshot={snapshot} currentHealth={currentHealth} maxHealth={maxHealth} />
       {snapshot.gameState === GameState.DEAD ? (
-        <GameOverScreen snapshot={snapshot} best={best} onRestart={handleRestart} />
+        <GameOverScreen snapshot={snapshot} best={best} onRestart={handleRestart} onHome={onHome} />
       ) : null}
     </View>
   );

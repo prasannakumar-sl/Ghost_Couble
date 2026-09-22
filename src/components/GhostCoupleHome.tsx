@@ -7,6 +7,7 @@ import {
     Pressable,
     ScrollView,
     StyleSheet,
+    Platform,
     Text,
     useWindowDimensions,
     View,
@@ -18,6 +19,9 @@ import { BestStats, loadBestStats } from "@/game/BestStatsStore";
 interface GhostCoupleHomeProps {
   onStartGame: () => void;
 }
+
+const MOBILE_BACKGROUND = require("@/assets/images/homepage.png");
+const DESKTOP_BACKGROUND = require("@/assets/images/homepageweb.png");
 
 const INITIAL_STATS: BestStats = {
   bestScore: 0,
@@ -39,7 +43,8 @@ const PARTICLES = [
 
 export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === "web" && width >= 1024;
   const [best, setBest] = useState(INITIAL_STATS);
   const [howToPlayVisible, setHowToPlayVisible] = useState(false);
   const [fogProgress] = useState(() => new Animated.Value(0));
@@ -187,9 +192,9 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
   return (
     <View style={styles.screen}>
       <ImageBackground
-        source={require("@/assets/images/homepage.png")}
+        source={isDesktopWeb ? DESKTOP_BACKGROUND : MOBILE_BACKGROUND}
         resizeMode="cover"
-        style={styles.backgroundImage}
+        style={[styles.backgroundImage, isDesktopWeb && styles.backgroundImageWeb]}
       />
       <View style={styles.skyGlow} />
       <View style={styles.moonHalo} />
@@ -515,7 +520,17 @@ function ControlRow({ gesture, action }: { gesture: string; action: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: "#070817", overflow: "hidden" },
-  backgroundImage: { ...StyleSheet.absoluteFill },
+  backgroundImage: { ...StyleSheet.absoluteFill, zIndex: 0 },
+  backgroundImageWeb: {
+    position: "fixed",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    width: "100vw",
+    height: "100vh",
+    zIndex: 0,
+  } as any,
   skyGlow: {
     position: "absolute",
     width: "130%",
@@ -567,7 +582,7 @@ const styles = StyleSheet.create({
     display: "none",
   },
   fogBandLower: { top: "62%", height: 68, display: "none" },
-  content: { flex: 1, justifyContent: "space-between" },
+  content: { flex: 1, justifyContent: "space-between", zIndex: 1 },
   header: { display: "none" },
   eyebrow: {
     color: "#c5bdd0",
