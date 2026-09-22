@@ -14,10 +14,12 @@ interface HeartProps {
 }
 
 function Heart({ active }: HeartProps) {
-  return <Text style={[styles.heart, !active && styles.emptyHeart]}>♥</Text>;
+  return <Text style={active ? styles.heart : styles.emptyHeart}>{active ? '♥' : '♡'}</Text>;
 }
 
 export default function GameHUD({ snapshot, currentHealth, maxHealth }: GameHUDProps) {
+  console.log('[HUD] RENDER HEALTH:', currentHealth);
+
   return (
     <View pointerEvents="none" style={styles.container}>
       <View style={styles.topRow}>
@@ -76,7 +78,7 @@ const styles = StyleSheet.create({
   value: { color: '#e8fbff', fontSize: 18, fontWeight: '800', marginTop: 2 },
   hearts: { flexDirection: 'row', marginTop: 1 },
   heart: { color: '#ff6c9b', fontSize: 20, marginRight: 5 },
-  emptyHeart: { color: '#32334d' },
+  emptyHeart: { color: '#8b91b8', fontSize: 20, marginRight: 5 },
   coinBadge: {
     alignSelf: 'flex-start',
     marginTop: 8,

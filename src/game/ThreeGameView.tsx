@@ -103,7 +103,6 @@ export default function ThreeGameView({
   const previousBestDistanceRef = useRef(previousBestDistance);
   const bestStatsLoadedRef = useRef(bestStatsLoaded);
   const onSnapshotRef = useRef(onSnapshot);
-  const onHealthChangedRef = useRef(onHealthChanged);
   const onCoinsCollectedRef = useRef(onCoinsCollected);
 
   useEffect(() => {
@@ -111,9 +110,8 @@ export default function ThreeGameView({
     previousBestDistanceRef.current = previousBestDistance;
     bestStatsLoadedRef.current = bestStatsLoaded;
     onSnapshotRef.current = onSnapshot;
-    onHealthChangedRef.current = onHealthChanged;
     onCoinsCollectedRef.current = onCoinsCollected;
-  }, [bestStatsLoaded, onCoinsCollected, onHealthChanged, onSnapshot, previousBestDistance, restartToken]);
+  }, [bestStatsLoaded, onCoinsCollected, onSnapshot, previousBestDistance, restartToken]);
 
   useEffect(() => {
     void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
@@ -163,7 +161,7 @@ export default function ThreeGameView({
     const obstacleManager = new ObstacleManager(chunkManager);
     const collisionSystem = new CollisionSystem();
     const runtime = new GameRuntime(GAME_CONFIG.maxHearts, (health) => {
-      onHealthChangedRef.current?.(health);
+      onHealthChanged?.(health);
     });
     const ghostController = new GhostController();
     const coinManager = new CoinManager(chunkManager, runtime, playerController.config);
@@ -387,7 +385,7 @@ export default function ThreeGameView({
         if (!deathSequenceStarted && runtime.getSnapshot().gameState !== GameState.DEAD && playerController.jetpackPhase === JetpackPhase.NONE) {
           const collisionSnapshot = playerController.getSnapshot();
           collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
-            console.log('[COLLISION] Player hit obstacle', obstacle.uuid);
+            console.log('[OBSTACLE] HIT', obstacle.uuid);
             if (runtime.consumeShield()) {
               shieldBreakRemaining = 0.25;
               cameraShakeRemaining = 0.25;

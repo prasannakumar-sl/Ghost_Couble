@@ -67,6 +67,7 @@ export default function GameScene() {
   }, [best, snapshot]);
 
   const handleHealthChanged = (health: number) => {
+    console.log('[HUD] RECEIVED HEALTH:', health);
     setCurrentHealth(health);
   };
 
