@@ -5,18 +5,29 @@ import { GameSnapshot } from '@/game/GameSnapshot';
 
 interface GameHUDProps {
   snapshot: GameSnapshot;
+  currentHealth: number;
+  maxHealth: number;
 }
 
-export default function GameHUD({ snapshot }: GameHUDProps) {
+interface HeartProps {
+  active: boolean;
+}
+
+function Heart({ active }: HeartProps) {
+  return <Text style={[styles.heart, !active && styles.emptyHeart]}>♥</Text>;
+}
+
+export default function GameHUD({ snapshot, currentHealth, maxHealth }: GameHUDProps) {
   return (
     <View pointerEvents="none" style={styles.container}>
       <View style={styles.topRow}>
         <View style={styles.statBlock}>
           <Text style={styles.label}>HEARTS</Text>
-          <Text style={styles.hearts}>
-            {'♥'.repeat(snapshot.hearts)}
-            <Text style={styles.emptyHearts}>{'♥'.repeat(snapshot.maxHearts - snapshot.hearts)}</Text>
-          </Text>
+          <View style={styles.hearts}>
+            {Array.from({ length: maxHealth }).map((_, index) => (
+              <Heart key={index} active={index < currentHealth} />
+            ))}
+          </View>
         </View>
         <View style={[styles.statBlock, styles.centerBlock]}>
           <Text style={styles.label}>SCORE</Text>
@@ -63,8 +74,9 @@ const styles = StyleSheet.create({
   rightBlock: { alignItems: 'flex-end' },
   label: { color: '#8aa6c9', fontSize: 9, letterSpacing: 1.5, fontWeight: '700' },
   value: { color: '#e8fbff', fontSize: 18, fontWeight: '800', marginTop: 2 },
-  hearts: { color: '#ff6c9b', fontSize: 20, letterSpacing: 2, marginTop: 1 },
-  emptyHearts: { color: '#32334d' },
+  hearts: { flexDirection: 'row', marginTop: 1 },
+  heart: { color: '#ff6c9b', fontSize: 20, marginRight: 5 },
+  emptyHeart: { color: '#32334d' },
   coinBadge: {
     alignSelf: 'flex-start',
     marginTop: 8,

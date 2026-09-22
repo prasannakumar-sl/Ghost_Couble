@@ -11,6 +11,8 @@ export enum GameOverReason {
   GHOST_CAUGHT = 'GHOST_CAUGHT',
 }
 
+export type HealthChangedHandler = (health: number) => void;
+
 export interface GameRuntimeSnapshot {
   score: number;
   distance: number;
@@ -27,6 +29,7 @@ export interface GameRuntimeSnapshot {
 
 export class GameRuntime {
   private readonly maxHearts: number;
+  private readonly onHealthChanged?: HealthChangedHandler;
   private currentRunScore = 0;
   private currentRunDistance = 0;
   private currentRunCoins = 0;
@@ -39,8 +42,9 @@ export class GameRuntime {
   private shieldRemaining = 0;
   private magnetRemaining = 0;
 
-  constructor(maxHearts = GAME_CONFIG.maxHearts) {
+  constructor(maxHearts = GAME_CONFIG.maxHearts, onHealthChanged?: HealthChangedHandler) {
     this.maxHearts = maxHearts;
+    this.onHealthChanged = onHealthChanged;
     this.currentRunHearts = maxHearts;
     console.log('[GAME] Health initialized:', this.currentRunHearts);
   }
@@ -80,6 +84,7 @@ export class GameRuntime {
   heal() {
     if (this.gameState !== GameState.RUNNING || this.currentRunHearts >= this.maxHearts) return false;
     this.currentRunHearts += 1;
+    this.onHealthChanged?.(this.currentRunHearts);
     return true;
   }
 
@@ -96,11 +101,13 @@ export class GameRuntime {
   }
 
   reset() {
+    const previousHealth = this.currentRunHearts;
     this.currentRunScore = 0;
     this.currentRunDistance = 0;
     this.currentRunCoins = 0;
     this.currentRunHearts = this.maxHearts;
     console.log('[GAME] Health initialized:', this.currentRunHearts);
+    if (this.currentRunHearts !== previousHealth) this.onHealthChanged?.(this.currentRunHearts);
     this.gameState = GameState.RUNNING;
     this.gameOverReason = null;
     this.damageCooldownRemaining = 0;
@@ -145,8 +152,11 @@ export class GameRuntime {
   private applyDamage(amount: number) {
     const previousHealth = this.currentRunHearts;
     this.currentRunHearts = Math.max(0, this.currentRunHearts - amount);
-    console.log('[HEALTH] Previous:', previousHealth);
-    console.log('[HEALTH] New:', this.currentRunHearts);
+    if (this.currentRunHearts !== previousHealth) {
+      console.log('[HEALTH] Previous:', previousHealth);
+      console.log('[HEALTH] New:', this.currentRunHearts);
+      this.onHealthChanged?.(this.currentRunHearts);
+    }
     this.damageCooldownRemaining = GAME_CONFIG.damageCooldown;
     this.hitRemaining = GAME_CONFIG.hitDuration;
     this.gameState = GameState.HIT;

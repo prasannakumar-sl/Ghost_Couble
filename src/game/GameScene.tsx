@@ -8,14 +8,15 @@ import { BestStats, loadBestStats, saveBestStats } from './BestStatsStore';
 import { GameState } from './GameRuntime';
 import { GameSnapshot } from './GameSnapshot';
 import { GhostState } from './ghost/GhostState';
+import { GAME_CONFIG } from './config/gameConfig';
 import ThreeGameView from './ThreeGameView';
 
 const INITIAL_SNAPSHOT: GameSnapshot = {
   score: 0,
   distance: 0,
   coins: 0,
-  hearts: 3,
-  maxHearts: 3,
+  hearts: GAME_CONFIG.maxHearts,
+  maxHearts: GAME_CONFIG.maxHearts,
   gameState: GameState.RUNNING,
   gameOverReason: null,
   ghostState: GhostState.FOLLOW,
@@ -33,7 +34,9 @@ const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0, t
 
 export default function GameScene() {
   const insets = useSafeAreaInsets();
+  const maxHealth: number = GAME_CONFIG.maxHearts;
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
+  const [currentHealth, setCurrentHealth] = useState(maxHealth);
   const [best, setBest] = useState(INITIAL_BEST);
   const [bestStatsLoaded, setBestStatsLoaded] = useState(false);
   const [restartToken, setRestartToken] = useState(0);
@@ -63,6 +66,10 @@ export default function GameScene() {
     void saveBestStats(nextBest);
   }, [best, snapshot]);
 
+  const handleHealthChanged = (health: number) => {
+    setCurrentHealth(health);
+  };
+
   const handleCoinsCollected = (amount: number) => {
     setBest((previousBest) => {
       const nextTotal = previousBest.totalCoins + amount;
@@ -75,6 +82,7 @@ export default function GameScene() {
 
   const handleRestart = () => {
     savedGameOverRef.current = false;
+    setCurrentHealth(maxHealth);
     console.log('[COIN] New run');
     console.log('[COIN] Run Coins reset to 0');
     setSnapshot(INITIAL_SNAPSHOT);
@@ -88,13 +96,14 @@ export default function GameScene() {
         previousBestDistance={best.bestDistance}
         bestStatsLoaded={bestStatsLoaded}
         onSnapshot={setSnapshot}
+        onHealthChanged={handleHealthChanged}
         onCoinsCollected={handleCoinsCollected}
       />
       <View pointerEvents="none" style={[styles.titleHud, { paddingTop: Math.max(18, insets.top + 4) }]}>
         <Text style={styles.title}>GHOST COUPLE</Text>
         <Text style={styles.subtitle}>SWIPE TO RUN THE NIGHT</Text>
       </View>
-      <GameHUD snapshot={snapshot} />
+      <GameHUD snapshot={snapshot} currentHealth={currentHealth} maxHealth={maxHealth} />
       {snapshot.gameState === GameState.DEAD ? (
         <GameOverScreen snapshot={snapshot} best={best} onRestart={handleRestart} />
       ) : null}

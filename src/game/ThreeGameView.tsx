@@ -71,6 +71,7 @@ interface ThreeGameViewProps {
   previousBestDistance: number;
   bestStatsLoaded: boolean;
   onSnapshot: (snapshot: GameSnapshot) => void;
+  onHealthChanged?: (health: number) => void;
   onCoinsCollected: (amount: number) => void;
 }
 
@@ -83,6 +84,7 @@ export default function ThreeGameView({
   previousBestDistance,
   bestStatsLoaded,
   onSnapshot,
+  onHealthChanged,
   onCoinsCollected,
 }: ThreeGameViewProps) {
   const playerController = useMemo(() => new PlayerController(), []);
@@ -101,6 +103,7 @@ export default function ThreeGameView({
   const previousBestDistanceRef = useRef(previousBestDistance);
   const bestStatsLoadedRef = useRef(bestStatsLoaded);
   const onSnapshotRef = useRef(onSnapshot);
+  const onHealthChangedRef = useRef(onHealthChanged);
   const onCoinsCollectedRef = useRef(onCoinsCollected);
 
   useEffect(() => {
@@ -108,8 +111,9 @@ export default function ThreeGameView({
     previousBestDistanceRef.current = previousBestDistance;
     bestStatsLoadedRef.current = bestStatsLoaded;
     onSnapshotRef.current = onSnapshot;
+    onHealthChangedRef.current = onHealthChanged;
     onCoinsCollectedRef.current = onCoinsCollected;
-  }, [bestStatsLoaded, onCoinsCollected, onSnapshot, previousBestDistance, restartToken]);
+  }, [bestStatsLoaded, onCoinsCollected, onHealthChanged, onSnapshot, previousBestDistance, restartToken]);
 
   useEffect(() => {
     void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
@@ -158,7 +162,9 @@ export default function ThreeGameView({
     const chunkManager = new ChunkManager(scene);
     const obstacleManager = new ObstacleManager(chunkManager);
     const collisionSystem = new CollisionSystem();
-    const runtime = new GameRuntime();
+    const runtime = new GameRuntime(GAME_CONFIG.maxHearts, (health) => {
+      onHealthChangedRef.current?.(health);
+    });
     const ghostController = new GhostController();
     const coinManager = new CoinManager(chunkManager, runtime, playerController.config);
     const jetpackManager = new JetpackManager(chunkManager, runtime);
