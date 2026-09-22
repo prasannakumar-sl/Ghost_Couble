@@ -19,7 +19,7 @@ import { audioManager } from "@/audio/AudioManager";
 import { BestStats, loadBestStats } from "@/game/BestStatsStore";
 
 interface GhostCoupleHomeProps {
-  onStartGame: () => void;
+  onPlay: () => void;
 }
 
 const MOBILE_BACKGROUND = require("@/assets/images/homepage.png");
@@ -43,7 +43,7 @@ const PARTICLES = [
   { left: "91%", top: "62%", size: 2, delay: 650 },
 ] as const;
 
-export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
+export default function GhostCoupleHome({ onPlay }: GhostCoupleHomeProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === "web" && width >= 1024;
@@ -193,6 +193,11 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
 
   const startButtonScale = Animated.multiply(buttonPulse, pressScale);
 
+  const handlePlay = () => {
+    audioManager.playSFX("button");
+    onPlay();
+  };
+
   const handlePressIn = () => {
     Animated.spring(pressScale, {
       toValue: 0.96,
@@ -211,11 +216,6 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
     }).start();
   };
 
-  const handleStartGame = () => {
-    audioManager.playSFX("button");
-    audioManager.stopMusic();
-    onStartGame();
-  };
 
   return (
     <View style={styles.screen}>
@@ -472,8 +472,8 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
           <Animated.View style={{ transform: [{ scale: startButtonScale }] }}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Start game"
-              onPress={handleStartGame}
+              accessibilityLabel="Play"
+              onPress={handlePlay}
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
               style={({ pressed }) => [
@@ -483,11 +483,23 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
             >
               <View style={styles.startButtonShine} />
               <Text style={styles.startIcon}>▶</Text>
-              <Text style={styles.startText}>START GAME</Text>
+              <Text style={styles.startText}>PLAY</Text>
             </Pressable>
           </Animated.View>
 
           <View style={styles.secondaryActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open character selection"
+              onPress={handlePlay}
+              style={({ pressed }) => [
+                styles.howButton,
+                pressed && styles.secondaryPressed,
+              ]}
+            >
+              <Text style={styles.howButtonText}>CHARACTER</Text>
+              <Text style={styles.howButtonArrow}>✦</Text>
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={() => setHowToPlayVisible(true)}
@@ -1361,7 +1373,10 @@ const styles = StyleSheet.create({
     letterSpacing: 2.2,
   },
   secondaryActions: {
+    width: "100%",
+    maxWidth: 380,
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     justifyContent: "center",
     gap: 4,

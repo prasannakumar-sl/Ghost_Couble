@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import GameHUD from '@/components/GameHUD';
 import GameOverScreen from '@/components/GameOverScreen';
 import { audioManager } from '@/audio/AudioManager';
+import { CharacterId } from './CharacterTypes';
 import { BestStats, loadBestStats, saveBestStats } from './BestStatsStore';
 import { GameState } from './GameRuntime';
 import { GameSnapshot } from './GameSnapshot';
@@ -34,10 +35,11 @@ const INITIAL_SNAPSHOT: GameSnapshot = {
 const INITIAL_BEST: BestStats = { bestScore: 0, bestDistance: 0, bestCoins: 0, totalCoins: 0 };
 
 interface GameSceneProps {
+  characterId: CharacterId;
   onHome: () => void;
 }
 
-export default function GameScene({ onHome }: GameSceneProps) {
+export default function GameScene({ characterId, onHome }: GameSceneProps) {
   const insets = useSafeAreaInsets();
   const maxHealth: number = GAME_CONFIG.maxHearts;
   const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
@@ -117,6 +119,7 @@ export default function GameScene({ onHome }: GameSceneProps) {
   return (
     <View style={styles.container}>
       <ThreeGameView
+        characterId={characterId}
         restartToken={restartToken}
         previousBestDistance={best.bestDistance}
         bestStatsLoaded={bestStatsLoaded}

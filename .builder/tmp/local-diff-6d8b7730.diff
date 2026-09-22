@@ -1,0 +1,87 @@
+diff --git a/src/game/ThreeGameView.tsx b/src/game/ThreeGameView.tsx
+index 8d0edfa..b6243ee 100644
+--- a/src/game/ThreeGameView.tsx
++++ b/src/game/ThreeGameView.tsx
+@@ -18,35 +18,11 @@ import { PowerUpManager } from './powerups/PowerUpManager';
+[L:18]  import { ShieldManager } from './powerups/ShieldManager';
+[L:19]  import { GAME_CONFIG } from './config/gameConfig';
+[L:20]  import { GameSnapshot } from './GameSnapshot';
+[L:21] +import { createPlayer, updatePlayerVisual } from './PlayerModel';
+[L:22/21]  import { createGhost, updateGhostVisual } from './ghost/Ghost';
+[L:23/22]  import { GhostController } from './ghost/GhostController';
+[L:24/23]  import { GhostState } from './ghost/GhostState';
+[L:25/24]  
+[L:25] -function createPlayer() {
+[L:26] -  const player = new THREE.Group();
+[L:27] -  const cloak = new THREE.Mesh(
+[L:28] -    new THREE.ConeGeometry(0.7, 1.9, 8),
+[L:29] -    new THREE.MeshStandardMaterial({ color: 0x30245e, emissive: 0x09051e, roughness: 0.82 }),
+[L:30] -  );
+[L:31] -  cloak.position.y = 1;
+[L:32] -  player.add(cloak);
+[L:33] -
+[L:34] -  const head = new THREE.Mesh(
+[L:35] -    new THREE.SphereGeometry(0.43, 16, 12),
+[L:36] -    new THREE.MeshStandardMaterial({ color: 0xd9f9ff, emissive: 0x4bd8ff, emissiveIntensity: 0.45 }),
+[L:37] -  );
+[L:38] -  head.position.y = 2.05;
+[L:39] -  player.add(head);
+[L:40] -
+[L:41] -  const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x160c35 });
+[L:42] -  for (const x of [-0.14, 0.14]) {
+[L:43] -    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), eyeMaterial);
+[L:44] -    eye.position.set(x, 2.08, -0.39);
+[L:45] -    player.add(eye);
+[L:46] -  }
+[L:47] -  return player;
+[L:48] -}
+[L:49] -
+[L:26/50]  function createWorld(scene: THREE.Scene) {
+[L:27/51]    scene.background = new THREE.Color(0x08091a);
+[L:28/52]    scene.fog = new THREE.Fog(0x08091a, 32, 125);
+@@ -179,7 +155,8 @@ export default function ThreeGameView({
+[L:155/179]      renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
+[L:156/180]      renderer.setPixelRatio(1);
+[L:157/181]  
+[L:182] -    const player = createPlayer();
+[L:158] +    const playerModel = createPlayer();
+[L:159] +    const player = playerModel.root;
+[L:160/183]      const ghost = createGhost();
+[L:161/184]      const shieldAura = new THREE.Mesh(
+[L:162/185]        new THREE.SphereGeometry(1.15, 12, 8),
+@@ -194,6 +171,7 @@ export default function ThreeGameView({
+[L:171/194]      const cameraAnchor = new THREE.Vector3();
+[L:172/195]      const clock = new THREE.Clock();
+[L:173/196]      let elapsed = 0;
+[L:174] +    let previousPlayerX = playerController.position.x;
+[L:175/197]      let hudElapsed = 0;
+[L:176/198]      let handledRestartToken = restartTokenRef.current;
+[L:177/199]      let cameraShakeRemaining = 0;
+@@ -243,6 +221,7 @@ export default function ThreeGameView({
+[L:221/243]      const restart = () => {
+[L:222/244]        runtime.reset();
+[L:223/245]        playerController.reset();
+[L:224] +      previousPlayerX = playerController.position.x;
+[L:225/246]        chunkManager.reset();
+[L:226/247]        obstacleManager.reset();
+[L:227/248]        coinManager.reset();
+@@ -438,6 +417,9 @@ export default function ThreeGameView({
+[L:417/438]        }
+[L:418/439]        const snapshot = playerController.getSnapshot();
+[L:419/440]        const deathProgress = deathEffectActive ? Math.min(1, deathEffectElapsed / 0.75) : 0;
+[L:420] +      const laneVelocity = (snapshot.lanePosition - previousPlayerX) / Math.max(delta, 1 / 60);
+[L:421] +      previousPlayerX = snapshot.lanePosition;
+[L:422] +      updatePlayerVisual(playerModel, snapshot, elapsed, delta, laneVelocity, deathProgress);
+[L:423/441]        const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
+[L:424/442]        shieldAura.position.set(playerController.position.x, playerController.position.y + 1.25, playerController.position.z);
+[L:425/443]        shieldAura.visible = runtimeSnapshot.shieldActive || shieldBreakRemaining > 0;
+@@ -458,8 +440,6 @@ export default function ThreeGameView({
+[L:440/458]        player.scale.set(1, isSliding ? 0.58 : 1, 1);
+[L:441/459]        player.position.y += isSliding ? 0.58 : 0;
+[L:442/460]        player.position.y += snapshot.state === PlayerState.RUN && snapshot.jetpackPhase === JetpackPhase.NONE ? Math.sin(elapsed * 12) * 0.045 : 0;
+[L:461] -      player.rotation.y = Math.sin(elapsed * 2.4) * 0.025;
+[L:462] -      player.rotation.z = deathProgress * Math.PI * 0.5;
+[L:443/463]        player.scale.multiplyScalar(1 - deathProgress * 0.15);
+[L:444/464]        cameraController.update(camera, cameraAnchor, delta);
+[L:445/465]        if (cameraShakeRemaining > 0) {
+[L:446/466] 
