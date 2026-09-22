@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GameHUD from '@/components/GameHUD';
 import GameOverScreen from '@/components/GameOverScreen';
+import { audioManager } from '@/audio/AudioManager';
 import { BestStats, loadBestStats, saveBestStats } from './BestStatsStore';
 import { GameState } from './GameRuntime';
 import { GameSnapshot } from './GameSnapshot';
@@ -54,6 +55,17 @@ export default function GameScene({ onHome }: GameSceneProps) {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    void audioManager.initialize().then(() => {
+      if (active) audioManager.playMusic('GAMEPLAY');
+    });
+    return () => {
+      active = false;
+      audioManager.cleanup();
+    };
+  }, []);
+
+  useEffect(() => {
     if (snapshot.gameState !== GameState.DEAD || savedGameOverRef.current) return;
     savedGameOverRef.current = true;
     const nextBest = {
@@ -86,12 +98,20 @@ export default function GameScene({ onHome }: GameSceneProps) {
   };
 
   const handleRestart = () => {
+    audioManager.stopAll();
+    audioManager.playSFX('button');
+    audioManager.playMusic('GAMEPLAY');
     savedGameOverRef.current = false;
     setCurrentHealth(maxHealth);
     console.log('[COIN] New run');
     console.log('[COIN] Run Coins reset to 0');
     setSnapshot(INITIAL_SNAPSHOT);
     setRestartToken((token) => token + 1);
+  };
+
+  const handleHome = () => {
+    audioManager.cleanup();
+    onHome();
   };
 
   return (
@@ -110,7 +130,7 @@ export default function GameScene({ onHome }: GameSceneProps) {
       </View>
       <GameHUD snapshot={snapshot} currentHealth={currentHealth} maxHealth={maxHealth} />
       {snapshot.gameState === GameState.DEAD ? (
-        <GameOverScreen snapshot={snapshot} best={best} onRestart={handleRestart} onHome={onHome} />
+        <GameOverScreen snapshot={snapshot} best={best} onRestart={handleRestart} onHome={handleHome} />
       ) : null}
     </View>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
+import { audioManager } from '@/audio/AudioManager';
 import { GLView } from 'expo-gl';
 import { PanResponder, Platform, StyleSheet, View } from 'react-native';
 import * as THREE from 'three';
@@ -19,7 +19,6 @@ import { ShieldManager } from './powerups/ShieldManager';
 import { GAME_CONFIG } from './config/gameConfig';
 import { GameSnapshot } from './GameSnapshot';
 import { createGhost, updateGhostVisual } from './ghost/Ghost';
-import { GhostAudio } from './ghost/GhostAudio';
 import { GhostController } from './ghost/GhostController';
 import { GhostState } from './ghost/GhostState';
 
@@ -75,10 +74,6 @@ interface ThreeGameViewProps {
   onCoinsCollected: (amount: number) => void;
 }
 
-const ambientAudio = require('../../assets/audio/ghost_ambient.wav');
-const chaseAudio = require('../../assets/audio/ghost_chase.wav');
-const attackAudio = require('../../assets/audio/ghost_attack.wav');
-
 export default function ThreeGameView({
   restartToken,
   previousBestDistance,
@@ -89,13 +84,6 @@ export default function ThreeGameView({
 }: ThreeGameViewProps) {
   const playerController = useMemo(() => new PlayerController(), []);
   const swipeInput = useMemo(() => new SwipeInput(), []);
-  const ambientPlayer = useAudioPlayer(ambientAudio);
-  const chasePlayer = useAudioPlayer(chaseAudio);
-  const attackPlayer = useAudioPlayer(attackAudio);
-  const ghostAudio = useMemo(
-    () => new GhostAudio(ambientPlayer, chasePlayer, attackPlayer),
-    [ambientPlayer, attackPlayer, chasePlayer],
-  );
   const animationRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const contextCreatedRef = useRef(false);
@@ -113,28 +101,27 @@ export default function ThreeGameView({
     onCoinsCollectedRef.current = onCoinsCollected;
   }, [bestStatsLoaded, onCoinsCollected, onSnapshot, previousBestDistance, restartToken]);
 
-  useEffect(() => {
-    void setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
-    return () => ghostAudio.dispose();
-  }, [ghostAudio]);
-
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (event) => {
-          ghostAudio.startAmbient();
           swipeInput.onGrant(event);
         },
         onPanResponderMove: swipeInput.onMove.bind(swipeInput),
         onPanResponderRelease: (event) => {
           const command = swipeInput.onRelease(event);
-          if (command) applyCommand(playerController, command);
+          if (!command) return;
+          const previousState = playerController.getSnapshot().state;
+          applyCommand(playerController, command);
+          const nextState = playerController.getSnapshot().state;
+          if (previousState !== PlayerState.JUMP && nextState === PlayerState.JUMP) audioManager.playSFX('jump');
+          if (previousState !== PlayerState.SLIDE && nextState === PlayerState.SLIDE) audioManager.playSFX('slide');
         },
         onPanResponderTerminate: () => {},
       }),
-    [ghostAudio, playerController, swipeInput],
+    [playerController, swipeInput],
   );
 
   const onContextCreate = async (gl: any) => {
@@ -218,7 +205,7 @@ export default function ThreeGameView({
 
     let hasBeatenPreviousBest = false;
     playerController.start();
-    ghostAudio.startAmbient();
+    audioManager.startGhostFollow();
 
     const createSnapshot = (): GameSnapshot => {
       const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
@@ -233,15 +220,11 @@ export default function ThreeGameView({
     };
 
     const handleGhostEvent = (event: 'CHASE_STARTED' | 'CHASE_ENDED' | 'ATTACK_STARTED' | 'ATTACK_FINISHED' | null) => {
-      if (event === 'CHASE_STARTED') ghostAudio.startChase();
-      if (event === 'CHASE_ENDED') {
-        ghostAudio.endChase();
-        ghostAudio.startAmbient();
-      }
+      if (event === 'CHASE_STARTED') audioManager.startGhostChase();
+      if (event === 'CHASE_ENDED') audioManager.startGhostFollow();
       if (event === 'ATTACK_STARTED') {
-
         cameraShakeRemaining = 0.35;
-        ghostAudio.playAttack();
+        audioManager.playGhostAttack();
       }
       if (event === 'ATTACK_FINISHED') {
         deathEffectActive = true;
@@ -265,7 +248,8 @@ export default function ThreeGameView({
       coinManager.reset();
       collisionSystem.reset();
       ghostController.reset(playerController.position);
-      ghostAudio.reset();
+      audioManager.stopSFX('ghost_attack');
+      audioManager.startGhostFollow();
       shieldManager.reset();
       powerUpManager.reset();
       jetpackManager.reset();
@@ -314,8 +298,8 @@ export default function ThreeGameView({
         ) {
           hasBeatenPreviousBest = true;
           ghostController.hide();
-          ghostAudio.endChase();
-          ghostAudio.stopAmbient();
+          audioManager.stopSFX('ghost_chase');
+          audioManager.stopSFX('ghost_follow');
         }
         if (!deathSequenceStarted) {
           if (runtimeBeforeGhost.gameState === GameState.RUNNING) playerController.recoverHit();
@@ -349,16 +333,22 @@ export default function ThreeGameView({
             runtimeBeforeGhost.distance,
           )) {
             playerController.startJetpack();
+            audioManager.playSFX('jetpack');
             swipeInput.setVerticalCommandsEnabled(false);
             coinManager.setJetpackActive(true, runtimeBeforeGhost.distance);
           }
           coinManager.attract(playerController.position.x, playerController.position.y, playerController.position.z, delta);
           coinManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
           if (!flightTransitionActive) {
+            const heartPickupActive = powerUpManager.extraHeart.isActive();
             powerUpManager.collect(playerController.position.x, playerController.position.y, playerController.position.z);
+            if (heartPickupActive && !powerUpManager.extraHeart.isActive()) audioManager.playSFX('heart');
           }
           const collectedCoins = runtime.getSnapshot().coins - coinsBeforeCollection;
-          if (collectedCoins > 0) onCoinsCollectedRef.current(collectedCoins);
+          if (collectedCoins > 0) {
+            onCoinsCollectedRef.current(collectedCoins);
+            for (let index = 0; index < collectedCoins; index += 1) audioManager.playSFX('coin');
+          }
           shieldManager.update(
             delta,
             elapsed,
@@ -373,6 +363,7 @@ export default function ThreeGameView({
             shieldManager.collect(playerController.position.x, playerController.position.y, playerController.position.z)
           ) {
             runtime.activateShield(GAME_CONFIG.shieldDuration);
+            audioManager.playSFX('shield');
             onSnapshotRef.current(createSnapshot());
           }
         }
@@ -389,12 +380,14 @@ export default function ThreeGameView({
             if (runtime.consumeShield()) {
               shieldBreakRemaining = 0.25;
               cameraShakeRemaining = 0.25;
+              audioManager.playSFX('shield');
               console.log('[HEALTH] Damage prevented by shield');
               onSnapshotRef.current(createSnapshot());
               return true;
             }
             const damaged = runtime.takeDamage(1);
             if (!damaged) return false;
+            audioManager.playSFX('obstacle_hit');
             const damagedSnapshot = runtime.getSnapshot();
             if (damagedSnapshot.hearts === 0) {
               if (!deathSequenceStarted) {
@@ -421,7 +414,10 @@ export default function ThreeGameView({
           gameOverDelayRemaining = Math.max(0, gameOverDelayRemaining - delta);
           if (gameOverDelayRemaining === 0) {
             deathEffectActive = false;
-            runtime.finishGhostAttack();
+            if (runtime.finishGhostAttack()) {
+              audioManager.stopAll();
+              audioManager.playMusic('GAME_OVER');
+            }
           }
         }
       }

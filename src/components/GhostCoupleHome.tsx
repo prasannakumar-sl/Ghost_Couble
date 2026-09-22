@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { audioManager } from "@/audio/AudioManager";
 import { BestStats, loadBestStats } from "@/game/BestStatsStore";
 
 interface GhostCoupleHomeProps {
@@ -57,6 +58,17 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
 
   useEffect(() => {
     void loadBestStats().then(setBest);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void audioManager.initialize().then(() => {
+      if (active) audioManager.playMusic("HOME");
+    });
+    return () => {
+      active = false;
+      audioManager.stopMusic();
+    };
   }, []);
 
   useEffect(() => {
@@ -187,6 +199,12 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
       bounciness: 5,
       useNativeDriver: true,
     }).start();
+  };
+
+  const handleStartGame = () => {
+    audioManager.playSFX("button");
+    audioManager.stopMusic();
+    onStartGame();
   };
 
   return (
@@ -445,7 +463,7 @@ export default function GhostCoupleHome({ onStartGame }: GhostCoupleHomeProps) {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Start game"
-              onPress={onStartGame}
+              onPress={handleStartGame}
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
               style={({ pressed }) => [
