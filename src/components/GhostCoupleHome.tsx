@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
     Animated,
     Easing,
+    Image,
     ImageBackground,
     Modal,
     Pressable,
@@ -17,9 +18,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { audioManager } from "@/audio/AudioManager";
 import { BestStats, loadBestStats } from "@/game/BestStatsStore";
+import { CHARACTER_CONFIGS, CharacterId } from "@/game/CharacterTypes";
+import AlexModelPreview from "@/game/AlexModelPreview";
 
 interface GhostCoupleHomeProps {
+  selectedCharacterId: CharacterId;
   onPlay: () => void;
+  onCharacter: () => void;
 }
 
 const MOBILE_BACKGROUND = require("@/assets/images/homepage.png");
@@ -43,7 +48,7 @@ const PARTICLES = [
   { left: "91%", top: "62%", size: 2, delay: 650 },
 ] as const;
 
-export default function GhostCoupleHome({ onPlay }: GhostCoupleHomeProps) {
+export default function GhostCoupleHome({ selectedCharacterId, onPlay, onCharacter }: GhostCoupleHomeProps) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === "web" && width >= 1024;
@@ -196,6 +201,11 @@ export default function GhostCoupleHome({ onPlay }: GhostCoupleHomeProps) {
   const handlePlay = () => {
     audioManager.playSFX("button");
     onPlay();
+  };
+
+  const handleCharacter = () => {
+    audioManager.playSFX("button");
+    onCharacter();
   };
 
   const handlePressIn = () => {
@@ -391,31 +401,6 @@ export default function GhostCoupleHome({ onPlay }: GhostCoupleHomeProps) {
             <View style={styles.ghostMouth} />
           </Animated.View>
 
-          <Animated.View
-            style={[
-              styles.playerFigure,
-              {
-                transform: [
-                  {
-                    translateY: playerFloat.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [3, -4],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.playerShadow} />
-            <View style={styles.playerCloak} />
-            <View style={styles.playerHead} />
-            <View style={styles.playerEyeRow}>
-              <View style={styles.playerEye} />
-              <View style={styles.playerEye} />
-            </View>
-            <View style={styles.playerBootLeft} />
-            <View style={styles.playerBootRight} />
-          </Animated.View>
 
           {PARTICLES.map((particle) => (
             <Animated.View
@@ -491,7 +476,7 @@ export default function GhostCoupleHome({ onPlay }: GhostCoupleHomeProps) {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Open character selection"
-              onPress={handlePlay}
+              onPress={handleCharacter}
               style={({ pressed }) => [
                 styles.howButton,
                 pressed && styles.secondaryPressed,
@@ -527,6 +512,36 @@ export default function GhostCoupleHome({ onPlay }: GhostCoupleHomeProps) {
           <Text style={styles.footer}>THE NIGHT IS WAITING</Text>
         </View>
       </View>
+
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.playerFigure,
+          styles.playerPreviewOverlay,
+          {
+            transform: [
+              {
+                translateY: playerFloat.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [3, -4],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <View style={styles.playerShadow} />
+        {selectedCharacterId === "alex" ? (
+          <AlexModelPreview />
+        ) : (
+          <Image
+            accessibilityLabel={`${selectedCharacterId} selected character`}
+            source={CHARACTER_CONFIGS[selectedCharacterId].idle}
+            style={styles.playerImage}
+            resizeMode="contain"
+          />
+        )}
+      </Animated.View>
 
       <Modal
         animationType="fade"
@@ -1201,11 +1216,19 @@ const styles = StyleSheet.create({
   },
   playerFigure: {
     position: "absolute",
-    alignSelf: "center",
+    left: "50%",
+    marginLeft: -61,
     top: "31%",
     width: 122,
     height: 220,
     alignItems: "center",
+  },
+  playerPreviewOverlay: { zIndex: 2 },
+  playerImage: {
+    position: "absolute",
+    top: 0,
+    width: 122,
+    height: 210,
   },
   playerShadow: {
     position: "absolute",

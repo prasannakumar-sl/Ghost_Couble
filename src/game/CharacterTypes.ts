@@ -2,63 +2,58 @@ export const CHARACTER_IDS = ['alex', 'luna', 'rex', 'mia', 'kaito', 'zara'] as 
 
 export type CharacterId = (typeof CHARACTER_IDS)[number];
 
-export interface CharacterAppearance {
-  body: number;
-  cloak: number;
-  accent: number;
-  skin: number;
-  hair: number;
-  shoes: number;
+export type CharacterAnimation = 'idle' | 'run' | 'jump' | 'slide' | 'fall';
+
+export interface CharacterAssetConfig {
+  idle: number;
+  run: number;
+  jump: number;
+  slide: number;
+  fall: number;
 }
 
-export const CHARACTER_APPEARANCES: Record<CharacterId, CharacterAppearance> = {
+export const CHARACTER_CONFIGS: Record<CharacterId, CharacterAssetConfig> = {
   alex: {
-    body: 0x24224b,
-    cloak: 0x4d367a,
-    accent: 0x63e5ed,
-    skin: 0xd7f5f6,
-    hair: 0x17152f,
-    shoes: 0x0e1024,
+    idle: require('@/assets/images/characters/alex/Alex_Idle.png'),
+    run: require('@/assets/images/characters/alex/Alex_Run.png'),
+    jump: require('@/assets/images/characters/alex/Alex_Jump.png'),
+    slide: require('@/assets/images/characters/alex/Alex_Slide.png'),
+    fall: require('@/assets/images/characters/alex/Alex_Fall.png'),
   },
   luna: {
-    body: 0x352550,
-    cloak: 0x702b78,
-    accent: 0xff7eb6,
-    skin: 0xf5d9ee,
-    hair: 0x24142f,
-    shoes: 0x160d22,
+    idle: require('@/assets/images/characters/luna/Luna_Idle.png'),
+    run: require('@/assets/images/characters/luna/Luna_Run.png'),
+    jump: require('@/assets/images/characters/luna/Luna_Jump.png'),
+    slide: require('@/assets/images/characters/luna/Luna_Slide.png'),
+    fall: require('@/assets/images/characters/luna/Luna_Fall.png'),
   },
   rex: {
-    body: 0x263b55,
-    cloak: 0x2f6680,
-    accent: 0x7ee8ff,
-    skin: 0xd7e9ed,
-    hair: 0x101c2e,
-    shoes: 0x0b1424,
+    idle: require('@/assets/images/characters/rex/Rex_Idle.png'),
+    run: require('@/assets/images/characters/rex/Rex_Run.png'),
+    jump: require('@/assets/images/characters/rex/Rex_Jump.png'),
+    slide: require('@/assets/images/characters/rex/Rex_Slide.png'),
+    fall: require('@/assets/images/characters/rex/Rex_Fall.png'),
   },
   mia: {
-    body: 0x4b263f,
-    cloak: 0x8b3e5b,
-    accent: 0xffb15f,
-    skin: 0xf0d6d2,
-    hair: 0x2a1323,
-    shoes: 0x1b0d18,
+    idle: require('@/assets/images/characters/mia/Mia_Idle.png'),
+    run: require('@/assets/images/characters/mia/Mia_Run.png'),
+    jump: require('@/assets/images/characters/mia/Mia_Jump.png'),
+    slide: require('@/assets/images/characters/mia/Mia_Slide.png'),
+    fall: require('@/assets/images/characters/mia/Mia_Fall.png'),
   },
   kaito: {
-    body: 0x26375a,
-    cloak: 0x38569b,
-    accent: 0x9d8cff,
-    skin: 0xd4e8f4,
-    hair: 0x111934,
-    shoes: 0x0b1025,
+    idle: require('@/assets/images/characters/kaito/Kaito_Idle.png'),
+    run: require('@/assets/images/characters/kaito/Kaito_Run.png'),
+    jump: require('@/assets/images/characters/kaito/Kaito_Jump.png'),
+    slide: require('@/assets/images/characters/kaito/Kaito_Slide.png'),
+    fall: require('@/assets/images/characters/kaito/Kaito_Fall.png'),
   },
   zara: {
-    body: 0x334d3d,
-    cloak: 0x467c67,
-    accent: 0xb6f37d,
-    skin: 0xe4f0d5,
-    hair: 0x14281e,
-    shoes: 0x0b1711,
+    idle: require('@/assets/images/characters/zara/Zara_Idle.png'),
+    run: require('@/assets/images/characters/zara/Zara_Run.png'),
+    jump: require('@/assets/images/characters/zara/Zara_Jump.png'),
+    slide: require('@/assets/images/characters/zara/Zara_Slide.png'),
+    fall: require('@/assets/images/characters/zara/Zara_Fall.png'),
   },
 };
 

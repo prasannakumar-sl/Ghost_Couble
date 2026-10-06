@@ -19,7 +19,7 @@ import { PowerUpManager } from './powerups/PowerUpManager';
 import { ShieldManager } from './powerups/ShieldManager';
 import { GAME_CONFIG } from './config/gameConfig';
 import { GameSnapshot } from './GameSnapshot';
-import { createPlayer, updatePlayerVisual } from './PlayerModel';
+import { createSelectedCharacter, disposePlayerModel, loadPlayerTextures, updatePlayerVisual } from './PlayerModel';
 import { createGhost, updateGhostVisual } from './ghost/Ghost';
 import { GhostController } from './ghost/GhostController';
 import { GhostState } from './ghost/GhostState';
@@ -66,6 +66,7 @@ export default function ThreeGameView({
   const animationRef = useRef<number | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const contextCreatedRef = useRef(false);
+  const mountedRef = useRef(true);
   const restartTokenRef = useRef(restartToken);
   const previousBestDistanceRef = useRef(previousBestDistance);
   const bestStatsLoadedRef = useRef(bestStatsLoaded);
@@ -158,7 +159,49 @@ export default function ThreeGameView({
     renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight, false);
     renderer.setPixelRatio(1);
 
-    const playerModel = createPlayer(characterId);
+    console.log('[PLAYER] selectedCharacterId:', characterId);
+    console.log('[PLAYER] creating selected visual:', characterId);
+    console.log('[PLAYER] old default player disabled');
+    const playerModel = createSelectedCharacter(characterId);
+    let playerTextures: Awaited<ReturnType<typeof loadPlayerTextures>> | null = null;
+    let disposed = false;
+    const disposeGame = () => {
+      if (disposed) return;
+      disposed = true;
+      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+      coinManager.dispose();
+      shieldManager.dispose();
+      powerUpManager.dispose();
+      jetpackManager.dispose();
+      obstacleManager.dispose();
+      chunkManager.dispose();
+      renderer.dispose();
+      disposePlayerModel(playerModel);
+      scene.traverse((object) => {
+        if (object.userData.sharedCharacterAsset) return;
+        const mesh = object as THREE.Mesh;
+        mesh.geometry?.dispose();
+        if (Array.isArray(mesh.material)) mesh.material.forEach((material) => material.dispose());
+        else if (mesh.material) mesh.material.dispose();
+      });
+      if (playerTextures) Object.values(playerTextures).forEach((texture) => texture.dispose());
+      contextCreatedRef.current = false;
+    };
+    cleanupRef.current = disposeGame;
+    playerTextures = await loadPlayerTextures(
+      playerModel,
+      characterId,
+      () => disposed || !mountedRef.current,
+    );
+    if (disposed) {
+      Object.values(playerTextures).forEach((texture) => texture.dispose());
+      disposePlayerModel(playerModel);
+      return;
+    }
+    if (!mountedRef.current) {
+      disposeGame();
+      return;
+    }
     const player = playerModel.root;
     const ghost = createGhost();
     const shieldAura = new THREE.Mesh(
@@ -422,7 +465,7 @@ export default function ThreeGameView({
       const deathProgress = deathEffectActive ? Math.min(1, deathEffectElapsed / 0.75) : 0;
       const laneVelocity = (snapshot.lanePosition - previousPlayerX) / Math.max(delta, 1 / 60);
       previousPlayerX = snapshot.lanePosition;
-      updatePlayerVisual(playerModel, snapshot, elapsed, delta, laneVelocity, deathProgress);
+      updatePlayerVisual(playerModel, playerTextures!, snapshot, elapsed, delta, laneVelocity, deathProgress);
       const ghostSnapshot = ghostController.getSnapshot(playerController.position.z);
       shieldAura.position.set(playerController.position.x, playerController.position.y + 1.25, playerController.position.z);
       shieldAura.visible = runtimeSnapshot.shieldActive || shieldBreakRemaining > 0;
@@ -455,27 +498,14 @@ export default function ThreeGameView({
       gl.endFrameEXP();
     };
     animate();
-    cleanupRef.current = () => {
-      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-      coinManager.dispose();
-      shieldManager.dispose();
-      powerUpManager.dispose();
-      jetpackManager.dispose();
-      obstacleManager.dispose();
-      chunkManager.dispose();
-      renderer.dispose();
-      scene.traverse((object) => {
-        const mesh = object as THREE.Mesh;
-        mesh.geometry?.dispose();
-        if (Array.isArray(mesh.material)) mesh.material.forEach((material) => material.dispose());
-        else if (mesh.material) mesh.material.dispose();
-      });
-      contextCreatedRef.current = false;
-    };
   };
 
-  useEffect(() => () => {
-    cleanupRef.current?.();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      cleanupRef.current?.();
+    };
   }, []);
 
   return (

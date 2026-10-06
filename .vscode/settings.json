@@ -5,7 +5,7 @@
     "source.sortMembers": "explicit"
   },
   "builder.serverUrl": " http://localhost:8081",
-  "builder.command": " npx expo start -c",
+  "builder.command": "npm run start",
   "builder.runDevServer": false,
   "builder.autoDetectDevServer": true,
   "builder.launchType": "browser"

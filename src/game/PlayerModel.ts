@@ -1,107 +1,109 @@
+import { Asset } from 'expo-asset';
+import { Image, Platform } from 'react-native';
 import * as THREE from 'three';
 
-import { CHARACTER_APPEARANCES, CharacterId } from './CharacterTypes';
+import { CHARACTER_CONFIGS, CharacterAnimation, CharacterId } from './CharacterTypes';
+import { cloneAlexModel, loadAlexGLTF, mapAlexAnimations } from './AlexModelAssets';
 import { JetpackPhase, PlayerSnapshot, PlayerState } from './PlayerTypes';
 
 export interface PlayerModel {
   root: THREE.Group;
   visual: THREE.Group;
-  body: THREE.Group;
-  head: THREE.Group;
-  leftArm: THREE.Group;
-  rightArm: THREE.Group;
-  leftLeg: THREE.Group;
-  rightLeg: THREE.Group;
+  sprite: THREE.Sprite;
+  model3D: THREE.Object3D | null;
+  mixer: THREE.AnimationMixer | null;
+  actions: Partial<Record<CharacterAnimation | 'fly', THREE.AnimationAction>>;
+  currentAnimation: CharacterAnimation | 'fly' | null;
+  currentSpriteAnimation: CharacterAnimation | null;
+  textures: THREE.Texture[];
 }
 
-const EYE_COLOR = 0x211337;
+const ANIMATION_BY_STATE: Record<PlayerState, CharacterAnimation> = {
+  [PlayerState.IDLE]: 'idle',
+  [PlayerState.RUN]: 'run',
+  [PlayerState.JUMP]: 'jump',
+  [PlayerState.FALL]: 'fall',
+  [PlayerState.SLIDE]: 'slide',
+  [PlayerState.HIT]: 'idle',
+  [PlayerState.DEAD]: 'fall',
+};
 
-function standardMaterial(color: number, roughness = 0.78, emissive = 0x000000) {
-  return new THREE.MeshStandardMaterial({
-    color,
-    roughness,
-    metalness: 0.08,
-    emissive,
-    emissiveIntensity: emissive === 0x000000 ? 0 : 0.24,
-  });
-}
-
-function addMesh(parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material, position?: THREE.Vector3) {
-  const mesh = new THREE.Mesh(geometry, material);
-  if (position) mesh.position.copy(position);
-  parent.add(mesh);
-  return mesh;
-}
-
-export function createPlayer(characterId: CharacterId = 'alex'): PlayerModel {
-  const appearance = CHARACTER_APPEARANCES[characterId];
+export function createSelectedCharacter(characterId: CharacterId): PlayerModel {
   const root = new THREE.Group();
-  root.name = 'Player';
+  root.name = `Player-${characterId}`;
   const visual = new THREE.Group();
   visual.name = 'PlayerVisual';
   root.add(visual);
 
-  const bodyMaterial = standardMaterial(appearance.body, 0.82, 0x090817);
-  const cloakMaterial = standardMaterial(appearance.cloak, 0.86, 0x110724);
-  const accentMaterial = standardMaterial(appearance.accent, 0.48, 0x1b8d9a);
-  const skinMaterial = standardMaterial(appearance.skin, 0.7, 0x2c6774);
-  const hairMaterial = standardMaterial(appearance.hair, 0.7, 0x090711);
-  const shoeMaterial = standardMaterial(appearance.shoes, 0.5, 0x080912);
-  const eyeMaterial = new THREE.MeshBasicMaterial({ color: EYE_COLOR });
+  const material = new THREE.SpriteMaterial({
+    color: 0xffffff,
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+  });
+  const sprite = new THREE.Sprite(material);
+  sprite.name = `${characterId}-PlayerSprite`;
+  sprite.position.y = 1.35;
+  sprite.scale.set(1.8, 2.7, 1);
+  visual.add(sprite);
 
-  const body = new THREE.Group();
-  body.name = 'PlayerBody';
-  visual.add(body);
-
-  addMesh(body, new THREE.CylinderGeometry(0.42, 0.5, 0.72, 8), bodyMaterial, new THREE.Vector3(0, 1.08, 0));
-  addMesh(body, new THREE.ConeGeometry(0.7, 1.4, 8), cloakMaterial, new THREE.Vector3(0, 0.77, 0.04));
-  addMesh(body, new THREE.TorusGeometry(0.38, 0.055, 6, 12), accentMaterial, new THREE.Vector3(0, 1.28, -0.02)).rotation.x = Math.PI / 2;
-  addMesh(body, new THREE.SphereGeometry(0.11, 8, 6), accentMaterial, new THREE.Vector3(0, 1.48, -0.03));
-
-  const head = new THREE.Group();
-  head.name = 'PlayerHead';
-  head.position.set(0, 2.05, 0);
-  visual.add(head);
-  addMesh(head, new THREE.SphereGeometry(0.42, 12, 8), skinMaterial);
-  const hair = addMesh(head, new THREE.SphereGeometry(0.43, 12, 8), hairMaterial, new THREE.Vector3(0, 0.17, 0.12));
-  hair.scale.set(1.05, 0.62, 0.78);
-  addMesh(head, new THREE.SphereGeometry(0.085, 8, 6), eyeMaterial, new THREE.Vector3(-0.14, 0.01, -0.38));
-  addMesh(head, new THREE.SphereGeometry(0.085, 8, 6), eyeMaterial, new THREE.Vector3(0.14, 0.01, -0.38));
-  const mouth = addMesh(head, new THREE.SphereGeometry(0.095, 8, 6), eyeMaterial, new THREE.Vector3(0, -0.16, -0.38));
-  mouth.scale.set(0.8, 0.45, 0.28);
-  const hairAccent = addMesh(head, new THREE.ConeGeometry(0.1, 0.3, 6), accentMaterial, new THREE.Vector3(0, 0.43, -0.02));
-  hairAccent.rotation.x = -0.2;
-
-  const leftArm = createLimb(-1, cloakMaterial, accentMaterial, visual);
-  const rightArm = createLimb(1, cloakMaterial, accentMaterial, visual);
-  const leftLeg = createLeg(-1, bodyMaterial, shoeMaterial, visual);
-  const rightLeg = createLeg(1, bodyMaterial, shoeMaterial, visual);
-
-  return { root, visual, body, head, leftArm, rightArm, leftLeg, rightLeg };
+  return {
+    root,
+    visual,
+    sprite,
+    model3D: null,
+    mixer: null,
+    actions: {},
+    currentAnimation: null,
+    currentSpriteAnimation: null,
+    textures: [],
+  };
 }
 
-function createLimb(side: -1 | 1, clothMaterial: THREE.Material, accentMaterial: THREE.Material, parent: THREE.Object3D) {
-  const limb = new THREE.Group();
-  limb.name = side < 0 ? 'PlayerLeftArm' : 'PlayerRightArm';
-  limb.position.set(side * 0.45, 1.36, 0);
-  addMesh(limb, new THREE.CylinderGeometry(0.09, 0.11, 0.52, 6), clothMaterial, new THREE.Vector3(0, -0.25, 0));
-  addMesh(limb, new THREE.SphereGeometry(0.11, 7, 5), accentMaterial, new THREE.Vector3(0, -0.54, -0.01));
-  parent.add(limb);
-  return limb;
+export async function loadPlayerTextures(model: PlayerModel, characterId: CharacterId, shouldCancel = () => false) {
+  const texturesPromise = loadCharacterTextures(model, characterId);
+  if (characterId === 'alex') {
+    try {
+      const [gltf, textures] = await Promise.all([loadAlexGLTF(), texturesPromise]);
+      if (shouldCancel()) return textures;
+      const character = cloneAlexModel(gltf, 2.45);
+      model.visual.add(character);
+      model.model3D = character;
+      model.mixer = new THREE.AnimationMixer(character);
+      const clips = mapAlexAnimations(gltf.animations);
+      for (const [name, clip] of Object.entries(clips)) {
+        if (!clip) continue;
+        const loops = name === 'run' || name === 'fly' || name === 'idle';
+        const action = model.mixer.clipAction(clip);
+        action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
+        action.clampWhenFinished = !loops;
+        model.actions[name as CharacterAnimation | 'fly'] = action;
+      }
+      return textures;
+    } catch (error) {
+      console.error('[Alex GLB] Unable to load model; using existing character textures', error);
+    }
+  }
+  return texturesPromise;
 }
 
-function createLeg(side: -1 | 1, clothMaterial: THREE.Material, shoeMaterial: THREE.Material, parent: THREE.Object3D) {
-  const leg = new THREE.Group();
-  leg.name = side < 0 ? 'PlayerLeftLeg' : 'PlayerRightLeg';
-  leg.position.set(side * 0.22, 0.78, 0);
-  addMesh(leg, new THREE.BoxGeometry(0.18, 0.58, 0.2), clothMaterial, new THREE.Vector3(0, -0.28, 0));
-  addMesh(leg, new THREE.BoxGeometry(0.24, 0.14, 0.42), shoeMaterial, new THREE.Vector3(0, -0.61, -0.1));
-  parent.add(leg);
-  return leg;
+async function loadCharacterTextures(model: PlayerModel, characterId: CharacterId) {
+  const config = CHARACTER_CONFIGS[characterId];
+  const entries = await Promise.all(
+    (Object.keys(config) as CharacterAnimation[]).map(async (animation) => [
+      animation,
+      await loadTexture(config[animation]),
+    ] as const),
+  );
+  const textures = Object.fromEntries(entries) as Record<CharacterAnimation, THREE.Texture>;
+  model.textures = Object.values(textures);
+  setPlayerTexture(model, textures, 'idle');
+  return textures;
 }
 
 export function updatePlayerVisual(
   model: PlayerModel,
+  textures: Record<CharacterAnimation, THREE.Texture>,
   snapshot: PlayerSnapshot,
   elapsed: number,
   delta: number,
@@ -109,36 +111,115 @@ export function updatePlayerVisual(
   deathProgress: number,
 ) {
   const transition = 1 - Math.exp(-14 * Math.min(delta, 0.05));
-  const runCycle = elapsed * 11;
+  let animation: CharacterAnimation | 'fly' = snapshot.jetpackPhase !== JetpackPhase.NONE
+    ? 'fly'
+    : ANIMATION_BY_STATE[snapshot.state];
+  if (animation === 'fall' && model.model3D && !model.actions.fall && model.actions.jump) {
+    animation = 'jump';
+  }
+  const action = model.actions[animation];
+
+  if (action) {
+    if (model.currentAnimation !== animation) {
+      const previousAction = model.currentAnimation ? model.actions[model.currentAnimation] : undefined;
+      action.reset().fadeIn(0.16).play();
+      previousAction?.fadeOut(0.16);
+      model.currentAnimation = animation;
+    }
+    model.model3D!.visible = true;
+    model.sprite.visible = false;
+    model.mixer?.update(delta);
+  } else {
+    if (model.currentAnimation) {
+      model.mixer?.stopAllAction();
+      model.currentAnimation = null;
+    }
+    if (model.model3D) model.model3D.visible = false;
+    model.sprite.visible = true;
+    setPlayerTexture(model, textures, animation === 'fly' ? 'fall' : animation);
+  }
+
   const running = snapshot.state === PlayerState.RUN && snapshot.jetpackPhase === JetpackPhase.NONE;
   const sliding = snapshot.state === PlayerState.SLIDE;
-  const jumping = snapshot.state === PlayerState.JUMP;
   const falling = snapshot.state === PlayerState.FALL;
-  const jetpacking = snapshot.jetpackPhase !== JetpackPhase.NONE;
-  const runSwing = running ? Math.sin(runCycle) * 0.62 : 0;
-  const runBounce = running ? Math.abs(Math.sin(runCycle)) * 0.06 : 0;
-  const airProgress = Math.min(1, Math.abs(snapshot.verticalPosition) / 4.2);
+  const runBounce = running ? Math.abs(Math.sin(elapsed * 11)) * 0.06 : 0;
+  const targetTilt = THREE.MathUtils.clamp(-laneVelocity * 0.08, -0.16, 0.16) + deathProgress * Math.PI * 0.5;
+  const targetYaw = THREE.MathUtils.clamp(laneVelocity * 0.035, -0.07, 0.07);
 
-  const armAngle = sliding ? 0.9 : jetpacking ? 0.2 : jumping ? -0.42 : falling ? -0.78 : runSwing;
-  const oppositeArmAngle = sliding ? 0.9 : jetpacking ? -0.2 : jumping ? -0.42 : falling ? -0.78 : -runSwing;
-  const legAngle = sliding ? -0.7 : jetpacking ? 0.08 : jumping ? -0.22 : falling ? 0.3 : -runSwing * 0.72;
-  const oppositeLegAngle = sliding ? 0.7 : jetpacking ? -0.08 : jumping ? 0.22 : falling ? -0.3 : runSwing * 0.72;
+  model.visual.position.y = approach(
+    model.visual.position.y,
+    (sliding ? -0.08 : snapshot.jetpackPhase !== JetpackPhase.NONE ? 0.03 : runBounce),
+    transition,
+  );
+  model.visual.rotation.x = approach(
+    model.visual.rotation.x,
+    snapshot.jetpackPhase !== JetpackPhase.NONE ? -0.08 : falling ? 0.12 : sliding ? 0.08 : 0,
+    transition,
+  );
+  model.visual.scale.y = approach(model.visual.scale.y, sliding && !action ? 0.92 : 1, transition);
+  model.root.rotation.z = approach(model.root.rotation.z, targetTilt, transition);
+  model.root.rotation.y = approach(model.root.rotation.y, targetYaw, transition);
 
-  model.leftArm.rotation.z = approach(model.leftArm.rotation.z, armAngle, transition);
-  model.rightArm.rotation.z = approach(model.rightArm.rotation.z, oppositeArmAngle, transition);
-  model.leftLeg.rotation.x = approach(model.leftLeg.rotation.x, legAngle, transition);
-  model.rightLeg.rotation.x = approach(model.rightLeg.rotation.x, oppositeLegAngle, transition);
-  model.body.rotation.x = approach(model.body.rotation.x, sliding ? -0.22 : falling ? 0.1 : jumping ? -0.08 : 0, transition);
-  model.body.position.y = approach(model.body.position.y, (sliding ? -0.1 : 0) + runBounce, transition);
-  model.head.rotation.z = approach(model.head.rotation.z, running ? Math.sin(runCycle * 0.5) * 0.035 : falling ? -0.08 : 0, transition);
-  model.head.rotation.x = approach(model.head.rotation.x, jumping ? -0.08 : falling ? 0.1 : 0, transition);
-  model.visual.position.y = approach(model.visual.position.y, sliding ? -0.08 : jetpacking ? 0.03 : runBounce, transition);
-  model.visual.rotation.x = approach(model.visual.rotation.x, jetpacking ? -0.08 : falling ? 0.12 : sliding ? 0.08 : 0, transition);
-  model.visual.scale.y = approach(model.visual.scale.y, sliding ? 0.92 : 1 - airProgress * 0.015, transition);
+  const material = model.sprite.material as THREE.SpriteMaterial;
+  material.opacity = 1 - deathProgress * 0.15;
+  model.sprite.position.y = approach(model.sprite.position.y, sliding ? 1.04 : 1.35, transition);
+}
 
-  const laneLean = THREE.MathUtils.clamp(-laneVelocity * 0.08, -0.16, 0.16);
-  model.root.rotation.z = approach(model.root.rotation.z, laneLean + deathProgress * Math.PI * 0.5, transition);
-  model.root.rotation.y = approach(model.root.rotation.y, THREE.MathUtils.clamp(laneVelocity * 0.035, -0.07, 0.07), transition);
+export function disposePlayerModel(model: PlayerModel) {
+  model.mixer?.stopAllAction();
+  if (!model.model3D) return;
+  model.mixer?.uncacheRoot(model.model3D);
+  model.model3D.traverse((object) => {
+    if (object instanceof THREE.SkinnedMesh) object.skeleton.dispose();
+  });
+}
+
+
+function setPlayerTexture(
+  model: PlayerModel,
+  textures: Record<CharacterAnimation, THREE.Texture>,
+  animation: CharacterAnimation,
+) {
+  if (model.currentSpriteAnimation === animation) return;
+  const texture = textures[animation];
+  const material = model.sprite.material as THREE.SpriteMaterial;
+  material.map = texture;
+  material.needsUpdate = true;
+  model.currentSpriteAnimation = animation;
+
+  const image = texture.image as { width?: number; height?: number } | undefined;
+  if (image?.width && image.height) {
+    const height = animation === 'slide' ? 1.65 : 2.7;
+    model.sprite.scale.set(height * (image.width / image.height), height, 1);
+  }
+}
+
+async function loadTexture(moduleId: number) {
+  const [asset] = await Asset.loadAsync(moduleId);
+
+  if (Platform.OS === 'web') {
+    return new Promise<THREE.Texture>((resolve, reject) => {
+      new THREE.TextureLoader().load(asset.uri, resolve, undefined, reject);
+    });
+  }
+
+  if (!asset.localUri) throw new Error(`Unable to load character asset: ${asset.name}`);
+
+  let width = asset.width;
+  let height = asset.height;
+  if (!width || !height) {
+    ({ width, height } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+      Image.getSize(asset.localUri as string, (imageWidth, imageHeight) => {
+        resolve({ width: imageWidth, height: imageHeight });
+      }, reject);
+    }));
+  }
+
+  const texture = new THREE.Texture();
+  (texture as THREE.Texture & { isDataTexture: boolean }).isDataTexture = true;
+  texture.image = { data: asset, width, height };
+  texture.needsUpdate = true;
+  return texture;
 }
 
 function approach(current: number, target: number, amount: number) {
