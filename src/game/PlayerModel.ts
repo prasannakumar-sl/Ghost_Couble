@@ -1,9 +1,10 @@
 import { Asset } from 'expo-asset';
+import { loadAsync } from 'expo-three';
 import { Image, Platform } from 'react-native';
 import * as THREE from 'three';
+import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 
 import { CHARACTER_CONFIGS, CharacterAnimation, CharacterId } from './CharacterTypes';
-import { cloneAlexModel, loadAlexGLTF, mapAlexAnimations } from './AlexModelAssets';
 import { JetpackPhase, PlayerSnapshot, PlayerState } from './PlayerTypes';
 
 export interface PlayerModel {
@@ -11,6 +12,7 @@ export interface PlayerModel {
   visual: THREE.Group;
   sprite: THREE.Sprite;
   model3D: THREE.Object3D | null;
+  modelBasePosition: THREE.Vector3 | null;
   mixer: THREE.AnimationMixer | null;
   actions: Partial<Record<CharacterAnimation | 'fly', THREE.AnimationAction>>;
   currentAnimation: CharacterAnimation | 'fly' | null;
@@ -18,14 +20,25 @@ export interface PlayerModel {
   textures: THREE.Texture[];
 }
 
+type AlexAnimation = CharacterAnimation | 'fly';
+
+const ALEX_MODEL_ASSET = require('@/assets/models/characters/alex/alex.glb');
+
+const ALEX_CLIP_NAMES: Partial<Record<AlexAnimation, string>> = {
+  run: 'FastRun0',
+  jump: 'JumpingUp0',
+  slide: 'RunningSlide0',
+  fly: 'Flying1',
+};
+
 const ANIMATION_BY_STATE: Record<PlayerState, CharacterAnimation> = {
-  [PlayerState.IDLE]: 'idle',
+  [PlayerState.IDLE]: 'run',
   [PlayerState.RUN]: 'run',
   [PlayerState.JUMP]: 'jump',
-  [PlayerState.FALL]: 'fall',
+  [PlayerState.FALL]: 'run',
   [PlayerState.SLIDE]: 'slide',
-  [PlayerState.HIT]: 'idle',
-  [PlayerState.DEAD]: 'fall',
+  [PlayerState.HIT]: 'run',
+  [PlayerState.DEAD]: 'run',
 };
 
 export function createSelectedCharacter(characterId: CharacterId): PlayerModel {
@@ -52,6 +65,7 @@ export function createSelectedCharacter(characterId: CharacterId): PlayerModel {
     visual,
     sprite,
     model3D: null,
+    modelBasePosition: null,
     mixer: null,
     actions: {},
     currentAnimation: null,
@@ -60,31 +74,68 @@ export function createSelectedCharacter(characterId: CharacterId): PlayerModel {
   };
 }
 
-export async function loadPlayerTextures(model: PlayerModel, characterId: CharacterId, shouldCancel = () => false) {
-  const texturesPromise = loadCharacterTextures(model, characterId);
-  if (characterId === 'alex') {
-    try {
-      const [gltf, textures] = await Promise.all([loadAlexGLTF(), texturesPromise]);
-      if (shouldCancel()) return textures;
-      const character = cloneAlexModel(gltf, 2.45);
-      model.visual.add(character);
-      model.model3D = character;
-      model.mixer = new THREE.AnimationMixer(character);
-      const clips = mapAlexAnimations(gltf.animations);
-      for (const [name, clip] of Object.entries(clips)) {
-        if (!clip) continue;
-        const loops = name === 'run' || name === 'fly' || name === 'idle';
-        const action = model.mixer.clipAction(clip);
-        action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
-        action.clampWhenFinished = !loops;
-        model.actions[name as CharacterAnimation | 'fly'] = action;
+export async function loadPlayerTextures(
+  model: PlayerModel,
+  characterId: CharacterId,
+  shouldCancel = () => false,
+) {
+  if (characterId === 'alex') void loadAlexModel(model, shouldCancel);
+  return loadCharacterTextures(model, characterId);
+}
+
+async function loadAlexModel(model: PlayerModel, shouldCancel: () => boolean) {
+  try {
+    const [asset] = await Asset.loadAsync(ALEX_MODEL_ASSET);
+    const assetUri = asset.localUri ?? asset.uri;
+    const gltf = Platform.OS === 'web'
+      ? await new GLTFLoader().loadAsync(assetUri) as GLTF
+      : await loadAsync(
+          ALEX_MODEL_ASSET,
+          undefined,
+          assetUri.slice(0, assetUri.lastIndexOf('/') + 1),
+        ) as GLTF;
+    if (shouldCancel()) return;
+    const character = gltf.scene;
+    const bounds = new THREE.Box3().setFromObject(character);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const scale = 2.45 / Math.max(size.y, 0.001);
+
+    character.scale.setScalar(scale);
+    character.position.set(-center.x * scale, -bounds.min.y * scale, -center.z * scale);
+    character.rotation.y = Math.PI;
+    character.traverse((object) => {
+      if ((object as THREE.Mesh).isMesh) {
+        const mesh = object as THREE.Mesh;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
       }
-      return textures;
-    } catch (error) {
-      console.error('[Alex GLB] Unable to load model; using existing character textures', error);
+    });
+
+    model.visual.add(character);
+    model.model3D = character;
+    model.modelBasePosition = character.position.clone();
+    model.mixer = new THREE.AnimationMixer(character);
+
+    const clipNames = gltf.animations.map(({ name }) => name);
+    gltf.animations.forEach(stripRootMotion);
+    console.info('[Alex GLB] Available animation clips:', clipNames);
+    for (const [animation, clipName] of Object.entries(ALEX_CLIP_NAMES) as [AlexAnimation, string][]) {
+      const clip = gltf.animations.find(({ name }) => name === clipName);
+      if (!clip) {
+        console.warn(`[Alex GLB] Missing ${clipName} clip. Available clips: ${clipNames.join(', ') || 'none'}`);
+        continue;
+      }
+
+      const loops = animation === 'run' || animation === 'fly';
+      const action = model.mixer.clipAction(clip);
+      action.setLoop(loops ? THREE.LoopRepeat : THREE.LoopOnce, loops ? Infinity : 1);
+      action.clampWhenFinished = !loops;
+      model.actions[animation] = action;
     }
+  } catch (error) {
+    console.error('[Alex GLB] Unable to load model; using existing character textures', error);
   }
-  return texturesPromise;
 }
 
 async function loadCharacterTextures(model: PlayerModel, characterId: CharacterId) {
@@ -111,30 +162,26 @@ export function updatePlayerVisual(
   deathProgress: number,
 ) {
   const transition = 1 - Math.exp(-14 * Math.min(delta, 0.05));
-  let animation: CharacterAnimation | 'fly' = snapshot.jetpackPhase !== JetpackPhase.NONE
+  const isJumpClipActive = model.currentAnimation === 'jump' && model.actions.jump?.isRunning();
+  const animation: AlexAnimation = snapshot.jetpackPhase !== JetpackPhase.NONE
     ? 'fly'
-    : ANIMATION_BY_STATE[snapshot.state];
-  if (animation === 'fall' && model.model3D && !model.actions.fall && model.actions.jump) {
-    animation = 'jump';
-  }
+    : snapshot.state === PlayerState.FALL && isJumpClipActive
+      ? 'jump'
+      : ANIMATION_BY_STATE[snapshot.state];
   const action = model.actions[animation];
 
-  if (action) {
+  if (model.model3D) {
     if (model.currentAnimation !== animation) {
       const previousAction = model.currentAnimation ? model.actions[model.currentAnimation] : undefined;
-      action.reset().fadeIn(0.16).play();
+      if (action) action.reset().fadeIn(0.16).play();
       previousAction?.fadeOut(0.16);
-      model.currentAnimation = animation;
+      model.currentAnimation = action ? animation : null;
     }
-    model.model3D!.visible = true;
+    model.model3D.visible = true;
     model.sprite.visible = false;
     model.mixer?.update(delta);
+    if (model.modelBasePosition) model.model3D.position.copy(model.modelBasePosition);
   } else {
-    if (model.currentAnimation) {
-      model.mixer?.stopAllAction();
-      model.currentAnimation = null;
-    }
-    if (model.model3D) model.model3D.visible = false;
     model.sprite.visible = true;
     setPlayerTexture(model, textures, animation === 'fly' ? 'fall' : animation);
   }
@@ -220,6 +267,15 @@ async function loadTexture(moduleId: number) {
   texture.image = { data: asset, width, height };
   texture.needsUpdate = true;
   return texture;
+}
+
+function stripRootMotion(clip: THREE.AnimationClip) {
+  clip.tracks = clip.tracks.filter((track) => {
+    const target = track.name.split('.')[0]?.toLowerCase() ?? '';
+    const isPositionTrack = /\.position(?:\[[xyz]\])?$/i.test(track.name);
+    const isRootMotionTarget = !target || target.includes('root') || target.includes('hips') || target.includes('armature');
+    return !(isPositionTrack && isRootMotionTarget);
+  });
 }
 
 function approach(current: number, target: number, amount: number) {

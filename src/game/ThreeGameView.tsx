@@ -307,6 +307,7 @@ export default function ThreeGameView({
         handledRestartToken = restartTokenRef.current;
         restart();
       }
+      if (runtime.getSnapshot().gameState === GameState.DEAD) return;
 
       if (runtime.getSnapshot().gameState !== GameState.DEAD) {
         runtime.update(delta, playerController.config.speed);
@@ -398,9 +399,14 @@ export default function ThreeGameView({
           deathSequenceStarted ? 0 : playerController.config.speed,
         ));
 
+        player.position.set(
+          playerController.position.x,
+          playerController.position.y,
+          playerController.position.z,
+        );
         if (!deathSequenceStarted && runtime.getSnapshot().gameState !== GameState.DEAD && playerController.jetpackPhase === JetpackPhase.NONE) {
           const collisionSnapshot = playerController.getSnapshot();
-          collisionSystem.update(playerController, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
+          collisionSystem.update(player, collisionSnapshot, obstacleManager.obstacles, (obstacle) => {
             console.log('[OBSTACLE] HIT', obstacle.uuid);
             if (runtime.consumeShield()) {
               shieldBreakRemaining = 0.25;
@@ -447,12 +453,6 @@ export default function ThreeGameView({
         }
       }
 
-      if (runtime.getSnapshot().gameState === GameState.DEAD) {
-        onSnapshotRef.current(createSnapshot());
-        if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-        return;
-      }
 
       shieldBreakRemaining = Math.max(0, shieldBreakRemaining - delta);
       const runtimeSnapshot = createSnapshot();
@@ -482,11 +482,15 @@ export default function ThreeGameView({
 
       cameraAnchor.set(playerController.position.x, playerController.position.y, playerController.position.z);
       player.position.copy(cameraAnchor);
-      const isSliding = snapshot.state === PlayerState.SLIDE;
-      player.scale.set(1, isSliding ? 0.58 : 1, 1);
-      player.position.y += isSliding ? 0.58 : 0;
-      player.position.y += snapshot.state === PlayerState.RUN && snapshot.jetpackPhase === JetpackPhase.NONE ? Math.sin(elapsed * 12) * 0.045 : 0;
-      player.scale.multiplyScalar(1 - deathProgress * 0.15);
+      if (playerModel.model3D) {
+        player.scale.setScalar(1 - deathProgress * 0.15);
+      } else {
+        const isSliding = snapshot.state === PlayerState.SLIDE;
+        player.scale.set(1, isSliding ? 0.58 : 1, 1);
+        player.position.y += isSliding ? 0.58 : 0;
+        player.position.y += snapshot.state === PlayerState.RUN && snapshot.jetpackPhase === JetpackPhase.NONE ? Math.sin(elapsed * 12) * 0.045 : 0;
+        player.scale.multiplyScalar(1 - deathProgress * 0.15);
+      }
       cameraController.update(camera, cameraAnchor, delta);
       if (cameraShakeRemaining > 0) {
         cameraShakeRemaining = Math.max(0, cameraShakeRemaining - delta);

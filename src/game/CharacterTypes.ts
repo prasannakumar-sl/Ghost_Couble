@@ -15,10 +15,10 @@ export interface CharacterAssetConfig {
 export const CHARACTER_CONFIGS: Record<CharacterId, CharacterAssetConfig> = {
   alex: {
     idle: require('@/assets/images/characters/alex/Alex_Idle.png'),
-    run: require('@/assets/images/characters/alex/Alex_Run.png'),
-    jump: require('@/assets/images/characters/alex/Alex_Jump.png'),
-    slide: require('@/assets/images/characters/alex/Alex_Slide.png'),
-    fall: require('@/assets/images/characters/alex/Alex_Fall.png'),
+    run: require('@/assets/images/characters/alex/Alex_Idle.png'),
+    jump: require('@/assets/images/characters/alex/Alex_Idle.png'),
+    slide: require('@/assets/images/characters/alex/Alex_Idle.png'),
+    fall: require('@/assets/images/characters/alex/Alex_Idle.png'),
   },
   luna: {
     idle: require('@/assets/images/characters/luna/Luna_Idle.png'),

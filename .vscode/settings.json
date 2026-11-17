@@ -8,5 +8,6 @@
   "builder.command": "npm run start",
   "builder.runDevServer": false,
   "builder.autoDetectDevServer": true,
-  "builder.launchType": "browser"
+  "builder.launchType": "browser",
+  "files.autoSave": "afterDelay"
 }

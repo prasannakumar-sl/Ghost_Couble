@@ -1,8 +1,8 @@
-import { PlayerController } from './PlayerController';
 import * as THREE from 'three';
 
 import { PlayerSnapshot, PlayerState } from './PlayerTypes';
 import { Obstacle } from './Obstacle';
+
 
 export interface CollisionConfig {
   playerWidth: number;
@@ -22,49 +22,36 @@ export class CollisionSystem {
   readonly config: CollisionConfig;
   private readonly reportedObstaclePositions = new Map<Obstacle, number>();
   private readonly obstacleWorldPosition = new THREE.Vector3();
+  private readonly playerBounds = new THREE.Box3();
+  private readonly obstacleBounds = new THREE.Box3();
+  private readonly playerCenter = new THREE.Vector3();
+  private readonly playerSize = new THREE.Vector3();
 
   constructor(config: Partial<CollisionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
   update(
-    player: PlayerController,
+    player: THREE.Object3D,
     snapshot: PlayerSnapshot,
     obstacles: readonly Obstacle[],
     onHit: (obstacle: Obstacle) => boolean,
   ) {
     if (snapshot.state === PlayerState.HIT || snapshot.state === PlayerState.DEAD) return;
 
-    const playerHalfWidth = this.config.playerWidth / 2;
-    const playerHalfDepth = this.config.playerDepth / 2;
     const playerHeight = snapshot.state === PlayerState.SLIDE ? this.config.slideHeight : this.config.standingHeight;
-    const playerMinY = player.position.y;
-    const playerMaxY = playerMinY + playerHeight;
-    const playerMinX = player.position.x - playerHalfWidth;
-    const playerMaxX = player.position.x + playerHalfWidth;
-    const playerMinZ = player.position.z - playerHalfDepth;
-    const playerMaxZ = player.position.z + playerHalfDepth;
+    this.playerCenter.set(player.position.x, player.position.y + playerHeight / 2, player.position.z);
+    this.playerSize.set(this.config.playerWidth, playerHeight, this.config.playerDepth);
+    this.playerBounds.setFromCenterAndSize(this.playerCenter, this.playerSize);
 
     for (const obstacle of obstacles) {
       if (!obstacle.isActive()) continue;
-      const definition = obstacle.definition;
+      obstacle.updateWorldMatrix(true, false);
       obstacle.getWorldPosition(this.obstacleWorldPosition);
-      const obstacleMinX = this.obstacleWorldPosition.x - definition.width / 2;
-      const obstacleMaxX = this.obstacleWorldPosition.x + definition.width / 2;
-      const obstacleMinY = this.obstacleWorldPosition.y + definition.bottom;
-      const obstacleMaxY = obstacleMinY + definition.height;
       const obstacleWorldZ = this.obstacleWorldPosition.z;
-      const obstacleMinZ = obstacleWorldZ - definition.depth / 2;
-      const obstacleMaxZ = obstacleWorldZ + definition.depth / 2;
+      this.obstacleBounds.setFromObject(obstacle);
 
-      if (
-        playerMinX < obstacleMaxX &&
-        playerMaxX > obstacleMinX &&
-        playerMinY < obstacleMaxY &&
-        playerMaxY > obstacleMinY &&
-        playerMinZ < obstacleMaxZ &&
-        playerMaxZ > obstacleMinZ
-      ) {
+      if (this.playerBounds.intersectsBox(this.obstacleBounds)) {
         if (this.reportedObstaclePositions.get(obstacle) === obstacleWorldZ) return;
         if (onHit(obstacle)) this.reportedObstaclePositions.set(obstacle, obstacleWorldZ);
         return;
